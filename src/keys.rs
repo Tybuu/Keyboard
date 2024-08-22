@@ -1,9 +1,9 @@
 use core::{borrow::BorrowMut, ops::Range};
 
 use embassy_time::{Duration, Instant};
-use heapless::FnvIndexSet;
+use heapless::{FnvIndexSet, Vec};
 
-use crate::{codes::KeyCodes, report::NUM_KEYS};
+use crate::codes::KeyCodes;
 
 const DEFAULT_RELEASE_SCALE: f32 = 0.20;
 const DEFAULT_ACTUATE_SCALE: f32 = 0.25;
@@ -373,6 +373,15 @@ impl<const S: usize> Keys<S> {
         self.keys[index].update_buf(reading);
     }
 
+    /// Returns the indexes of all the keys that are pressed to the vec
+    pub fn is_pressed(&self, vec: &mut Vec<usize, S>) {
+        for i in 0..S {
+            if self.keys[i].pos.is_pressed() {
+                vec.push(i).unwrap();
+            }
+        }
+    }
+
     /// Pushes the resulting ScanResult onto the provided vec depending on the indexed key's
     /// position. Returns true if a key was pushed into the provided index set
     fn get_pressed_code(
@@ -488,7 +497,7 @@ impl<const S: usize> Keys<S> {
     /// layers. When the key is released, it will start using the provided layer code
     pub fn get_layer(&mut self, layer: usize) -> Option<Layer> {
         let mut new_layer: Option<Layer> = None;
-        for i in 0..NUM_KEYS {
+        for i in 0..S {
             let layer = match self.keys[i].current_layer {
                 Some(num) => num,
                 None => layer,
@@ -521,10 +530,10 @@ impl<const S: usize> Keys<S> {
     /// Returns all the pressed scancodes in the Keys struct. Returns it through
     /// the passed in vector. This function won't return layer codes. That will be done
     /// through the get_layer method. The passed in vector should be empty.
-    /// Note thatif a key is held, it will ignore the passed in layer and use the
+    /// Note that if a key is held, it will ignore the passed in layer and use the
     /// previous layer it's holding
     pub fn get_keys(&mut self, layer: usize, set: &mut FnvIndexSet<ScanCode, 64>) {
-        for i in 0..NUM_KEYS {
+        for i in 0..S {
             let layer = match self.keys[i].current_layer {
                 Some(num) => num,
                 None => layer,

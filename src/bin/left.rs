@@ -11,7 +11,7 @@ use defmt::info;
 use embassy_executor::Spawner;
 use embassy_futures::join::{join, join3, join_array};
 use embassy_rp::adc::{self, Adc, Channel, Config as AdcConfig};
-use embassy_rp::gpio::{Pin, Pull};
+use embassy_rp::gpio::{AnyPin, Pin, Pull};
 use embassy_rp::{bind_interrupts, gpio, peripherals, usb};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
@@ -24,7 +24,7 @@ use embassy_rp::usb::Driver;
 use embassy_usb::class::hid::{HidReaderWriter, HidWriter, State};
 use embassy_usb::{Builder, Config, Handler};
 use gpio::{Level, Output};
-use keyboard::report::{Report, NUM_KEYS};
+use keyboard::report::Report;
 use usbd_hid::descriptor::SerializedDescriptor;
 use {defmt_rtt as _, panic_probe as _};
 
@@ -38,6 +38,7 @@ static MUX: Mutex<CriticalSectionRawMutex, [u8; 3]> = Mutex::new([0u8; 3]);
 const SCROLL_TIME: u64 = 500;
 const MOUSE_POINTER_TIME: u64 = 10;
 
+pub const NUM_KEYS: usize = 42;
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
     info!("Device Started!");

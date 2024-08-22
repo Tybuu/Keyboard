@@ -4,7 +4,6 @@ use crate::{
     descriptor::{KeyboardReportNKRO, MouseReport},
     keys::{Keys, ScanCode},
 };
-pub const NUM_KEYS: usize = 42;
 
 fn set_bit(num: &mut u8, bit: u8, pos: u8) {
     let mask = 1 << pos;
@@ -34,9 +33,9 @@ impl Report {
 
     /// Generates a report with the provided keys. Returns a option tuple
     /// where it returns a Some when a report need to be sent
-    pub fn generate_report(
+    pub fn generate_report<const S: usize>(
         &mut self,
-        keys: &mut Keys<NUM_KEYS>,
+        keys: &mut Keys<S>,
     ) -> (Option<KeyboardReportNKRO>, Option<MouseReport>) {
         match keys.get_layer(self.current_layer) {
             Some(layer) => {

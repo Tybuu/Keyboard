@@ -1,8 +1,11 @@
+use heapless::Vec;
 use usbd_hid::descriptor::gen_hid_descriptor;
 use usbd_hid::descriptor::{
     generator_prelude::{Serialize, SerializeTuple, SerializedDescriptor, Serializer},
     AsInputReport,
 };
+
+use crate::keys::Keys;
 
 #[gen_hid_descriptor(
     (collection = APPLICATION, usage_page = GENERIC_DESKTOP, usage = KEYBOARD) = {
@@ -81,50 +84,40 @@ pub struct BufferReport {
     pub output: [u8; 4],
 }
 
-// #[gen_hid_descriptor(
-//     (collection = APPLICATION, usage_page = VENDOR_DEFINED_START, usage = 0x01) = {
-//         key_states=input;
-//     }
-// )]
-// pub struct SlaveKeyReport {
-//     pub key_states: [u8; 3],
-// }
-//
-// impl SlaveKeyReport {
-//     pub const fn default() -> Self {
-//         Self {
-//             key_states: [0u8; 3],
-//         }
-//     }
-//
-//     pub fn generate_report(&mut self, keys: &mut [Key]) -> Option<SlaveKeyReport> {
-//         let mut changed = false;
-//         for i in 0..keys.len() {
-//             match keys[i].is_pressed() {
-//                 true => {
-//                     let a_idx = (i / 8) as usize;
-//                     let b_idx = i % 8;
-//                     let res = self.key_states[a_idx] | (1 << b_idx);
-//                     if self.key_states[a_idx] != res {
-//                         self.key_states[a_idx] = res;
-//                         changed = true;
-//                     }
-//                 }
-//                 false => {
-//                     let a_idx = (i / 8) as usize;
-//                     let b_idx = i % 8;
-//                     let res = self.key_states[a_idx] & !(1 << b_idx);
-//                     if self.key_states[a_idx] != res {
-//                         self.key_states[a_idx] = res;
-//                         changed = true;
-//                     }
-//                 }
-//             }
-//         }
-//         if changed {
-//             Some(*self)
-//         } else {
-//             None
-//         }
-//     }
-// }
+#[gen_hid_descriptor(
+    (collection = APPLICATION, usage_page = VENDOR_DEFINED_START, usage = 0x01) = {
+        key_states=input;
+    }
+)]
+#[derive(PartialEq, Eq)]
+pub struct SlaveKeyReport {
+    pub key_states: [u8; 3],
+}
+
+impl SlaveKeyReport {
+    pub const fn default() -> Self {
+        Self {
+            key_states: [0u8; 3],
+        }
+    }
+
+    pub fn generate_report<const S: usize>(
+        &mut self,
+        keys: &mut Keys<S>,
+    ) -> Option<SlaveKeyReport> {
+        let mut pressed = Vec::<_, S>::new();
+        keys.is_pressed(&mut pressed);
+        let mut new_report = SlaveKeyReport::default();
+        for i in pressed {
+            let a_idx = (i / 8) as usize;
+            let b_idx = i % 8;
+            new_report.key_states[a_idx] |= 1 << b_idx;
+        }
+        if new_report != *self {
+            *self = new_report;
+            Some(*self)
+        } else {
+            None
+        }
+    }
+}
