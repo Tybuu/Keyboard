@@ -9,6 +9,7 @@ const DEFAULT_RELEASE_SCALE: f32 = 0.20;
 const DEFAULT_ACTUATE_SCALE: f32 = 0.25;
 const TOLERANCE_SCALE: f32 = 0.075;
 const BUFFER_SIZE: u16 = 1;
+const HOLD_TIME: Duration = Duration::from_millis(200);
 
 pub const NUM_LAYERS: usize = 10;
 
@@ -183,6 +184,8 @@ pub struct Layer {
     pub toggle: bool,
 }
 
+/// Sends the scan code in intervals which is determined by the passed in delay
+/// and passed in equation.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub struct IntervalPresses {
     code: ScanCode,
@@ -222,6 +225,88 @@ impl IntervalPresses {
     }
 }
 
+/// Sends a different ScanCode determined by how long a key is held for.
+#[derive(Copy, Clone, Debug)]
+pub struct ModTap {
+    press_code: ScanCode,
+    hold_code: ScanCode,
+    start_time: Option<Instant>,
+    held: bool,
+}
+
+impl ModTap {
+    fn new(press_code: ScanCode, hold_code: ScanCode) -> ModTap {
+        Self {
+            press_code,
+            hold_code,
+            start_time: None,
+            held: false,
+        }
+    }
+
+    fn get_code(&mut self, pressed: bool) -> ModTapResult {
+        if pressed {
+            if let Some(time) = self.start_time {
+                if time.elapsed() > HOLD_TIME {
+                    self.held = true;
+                    ModTapResult::Pressed(self.hold_code)
+                } else {
+                    ModTapResult::Holding
+                }
+            } else {
+                self.held = false;
+                self.start_time = Some(Instant::now());
+                ModTapResult::Holding
+            }
+        } else {
+            if self.start_time.is_some() {
+                self.start_time = None;
+                if !self.held {
+                    ModTapResult::Pressed(self.press_code)
+                } else {
+                    ModTapResult::None
+                }
+            } else {
+                ModTapResult::None
+            }
+        }
+    }
+
+    // This methods returns the ModTapResult without consuming the press code
+    fn get_layer(&mut self, pressed: bool) -> ModTapResult {
+        if pressed {
+            if let Some(time) = self.start_time {
+                if time.elapsed() > HOLD_TIME {
+                    self.held = true;
+                    ModTapResult::Pressed(self.hold_code)
+                } else {
+                    ModTapResult::Holding
+                }
+            } else {
+                self.held = false;
+                self.start_time = Some(Instant::now());
+                ModTapResult::Holding
+            }
+        } else {
+            if self.start_time.is_some() {
+                if !self.held {
+                    ModTapResult::Pressed(self.press_code)
+                } else {
+                    ModTapResult::None
+                }
+            } else {
+                ModTapResult::None
+            }
+        }
+    }
+}
+
+enum ModTapResult {
+    Pressed(ScanCode),
+    Holding,
+    None,
+}
+
 /// Represents all the different types of scancodes.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub enum ScanCode {
@@ -249,6 +334,7 @@ pub enum ScanCodeBehavior {
         combined_code: ScanCode,
     },
     IntervalPresses(IntervalPresses),
+    ModTap(ModTap),
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -355,9 +441,21 @@ impl<const S: usize> Keys<S> {
             ScanCodeBehavior::IntervalPresses(IntervalPresses::new(code.get_scan_code(), dur, f))
     }
 
+    pub fn set_modtap(&mut self, p_code: KeyCodes, h_code: KeyCodes, index: usize, layer: usize) {
+        self.keys[index].codes[layer] =
+            ScanCodeBehavior::ModTap(ModTap::new(p_code.get_scan_code(), h_code.get_scan_code()));
+    }
+
     /// Sets the following indexed to be a toggle layer key for the passed in layer. Any none layer
     /// keys passed in will be set like in set_code
     pub fn set_toggle_layer(&mut self, layer_code: KeyCodes, index: usize, layer: usize) {
+        match layer_code.get_scan_code() {
+            ScanCode::Layer(_) => {}
+            _ => {
+                self.keys[1000000].current_layer = None;
+                panic!("bruh")
+            }
+        }
         self.keys[index].set_code(layer_code, true, layer);
     }
 
@@ -449,6 +547,19 @@ impl<const S: usize> Keys<S> {
                     false
                 }
             }
+            ScanCodeBehavior::ModTap(val) => {
+                match val.get_code(self.keys[index].pos.is_pressed()) {
+                    ModTapResult::Pressed(code) => {
+                        set.insert(code).unwrap();
+                        true
+                    }
+                    ModTapResult::Holding => {
+                        // Held keys need to stay in the same layer so we'll have to return true
+                        true
+                    }
+                    ModTapResult::None => false,
+                }
+            }
         }
     }
 
@@ -456,11 +567,11 @@ impl<const S: usize> Keys<S> {
     /// to get the layer rather than get_pressed_code as calling get_pressed_code
     /// twice can lead to unintended behaviour for certain ScanCodeBehavior types
     fn get_layer_code(&mut self, index: usize, layer: usize) -> ScanCode {
-        match self.keys[index].codes[layer] {
+        match self.keys[index].codes[layer].borrow_mut() {
             ScanCodeBehavior::Single(code) => {
                 if self.keys[index].pos.is_pressed() {
                     if let ScanCode::Layer(res) = code {
-                        ScanCode::Layer(res)
+                        ScanCode::Layer(*res)
                     } else {
                         ScanCode::None
                     }
@@ -474,21 +585,33 @@ impl<const S: usize> Keys<S> {
                 combined_code,
             } => {
                 if self.keys[index].pos.is_pressed() {
-                    if self.keys[other_index].pos.is_pressed() {
+                    if self.keys[*other_index].pos.is_pressed() {
                         if let ScanCode::Layer(res) = combined_code {
-                            ScanCode::Layer(res)
+                            ScanCode::Layer(*res)
                         } else {
                             ScanCode::None
                         }
                     } else {
                         if let ScanCode::Layer(res) = normal_code {
-                            ScanCode::Layer(res)
+                            ScanCode::Layer(*res)
                         } else {
                             ScanCode::None
                         }
                     }
                 } else {
                     ScanCode::None
+                }
+            }
+            ScanCodeBehavior::ModTap(val) => {
+                match val.get_layer(self.keys[index].pos.is_pressed()) {
+                    ModTapResult::Pressed(code) => {
+                        if let ScanCode::Layer(res) = code {
+                            ScanCode::Layer(res)
+                        } else {
+                            ScanCode::None
+                        }
+                    }
+                    _ => ScanCode::None,
                 }
             }
             // Layer keys can only be a single code
@@ -508,25 +631,11 @@ impl<const S: usize> Keys<S> {
                 None => layer,
             };
             if let ScanCode::Layer(code) = self.get_layer_code(i, layer) {
-                match new_layer {
-                    Some(val) => {
-                        if val.pos > code.pos || val.toggle {
-                            new_layer = Some(code);
-                            if val.toggle {
-                                break;
-                            }
-                        }
-                    }
-                    None => new_layer = Some(code),
-                };
-                self.keys[i].current_layer = Some(layer);
-            }
-        }
-        if let Some(code) = new_layer {
-            if code.toggle {
-                for key in &mut self.keys {
-                    key.current_layer = None;
+                new_layer = Some(code);
+                if code.toggle {
+                    break;
                 }
+                self.keys[i].current_layer = Some(layer);
             }
         }
         new_layer

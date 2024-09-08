@@ -20,6 +20,7 @@ pub fn load_key_config<const S: usize>(keys: &mut Keys<S>) {
     keys.set_code(KeyCodes::KeyboardSs, 8, 0);
     keys.set_code(KeyCodes::KeyboardDd, 9, 0);
     keys.set_code(KeyCodes::KeyboardFf, 10, 0);
+    // keys.set_modtap(KeyCodes::KeyboardFf, KeyCodes::Layer1, 10, 0);
     keys.set_code(KeyCodes::KeyboardGg, 11, 0);
 
     keys.set_code(KeyCodes::KeyboardLeftShift, 12, 0);
@@ -30,7 +31,7 @@ pub fn load_key_config<const S: usize>(keys: &mut Keys<S>) {
     keys.set_code(KeyCodes::KeyboardBb, 17, 0);
 
     keys.set_code(KeyCodes::KeyboardLeftGUI, 18, 0);
-    keys.set_combined(KeyCodes::Layer1, KeyCodes::Layer6, 40, 19, 0);
+    keys.set_code(KeyCodes::Layer1, 19, 0);
     keys.set_code(KeyCodes::KeyboardSpacebar, 20, 0);
 
     keys.set_code(KeyCodes::KeyboardYy, 21, 0);
@@ -55,7 +56,7 @@ pub fn load_key_config<const S: usize>(keys: &mut Keys<S>) {
     keys.set_code(KeyCodes::KeyboardRightShift, 38, 0);
 
     keys.set_code(KeyCodes::KeyboardEnter, 39, 0);
-    keys.set_combined(KeyCodes::Layer2, KeyCodes::Layer6, 19, 40, 0);
+    keys.set_code(KeyCodes::Layer2, 40, 0);
     keys.set_code(KeyCodes::KeyboardLeftAlt, 41, 0);
 
     // Layer 1
@@ -72,7 +73,7 @@ pub fn load_key_config<const S: usize>(keys: &mut Keys<S>) {
     keys.set_code(KeyCodes::KeyboardLeftShift, 12, 1);
 
     keys.set_code(KeyCodes::KeyboardLeftGUI, 18, 1);
-    keys.set_combined(KeyCodes::Layer1, KeyCodes::Layer6, 40, 19, 1);
+    keys.set_code(KeyCodes::Layer1, 19, 1);
     keys.set_code(KeyCodes::KeyboardSpacebar, 20, 1);
 
     keys.set_code(KeyCodes::KeyboardDashUnderscore, 21, 1);
@@ -88,7 +89,7 @@ pub fn load_key_config<const S: usize>(keys: &mut Keys<S>) {
     keys.set_code(KeyCodes::Keyboard9OpenParens, 30, 1);
     keys.set_code(KeyCodes::Keyboard0CloseParens, 31, 1);
 
-    keys.set_combined(KeyCodes::Layer2, KeyCodes::Layer6, 19, 40, 1);
+    keys.set_code(KeyCodes::Layer2, 40, 1);
 
     // Layer 2
     keys.set_code(KeyCodes::KeyboardF1, 1, 2);
@@ -97,7 +98,7 @@ pub fn load_key_config<const S: usize>(keys: &mut Keys<S>) {
     keys.set_code(KeyCodes::KeyboardF4, 4, 2);
     keys.set_code(KeyCodes::KeyboardF5, 5, 2);
 
-    keys.set_combined(KeyCodes::Layer1, KeyCodes::Layer6, 40, 19, 2);
+    keys.set_code(KeyCodes::Layer1, 19, 2);
 
     keys.set_code(KeyCodes::KeyboardF6, 21, 2);
     keys.set_code(KeyCodes::KeyboardF7, 22, 2);
@@ -111,7 +112,7 @@ pub fn load_key_config<const S: usize>(keys: &mut Keys<S>) {
     keys.set_code(KeyCodes::KeyboardRightArrow, 30, 2);
 
     keys.set_toggle_layer(KeyCodes::Layer3, 38, 2);
-    keys.set_combined(KeyCodes::Layer2, KeyCodes::Layer6, 19, 40, 2);
+    keys.set_code(KeyCodes::Layer2, 40, 2);
 
     // Layer 3
     keys.set_code(KeyCodes::KeyboardEscape, 0, 3);
@@ -195,6 +196,8 @@ pub fn load_key_config<const S: usize>(keys: &mut Keys<S>) {
     keys.set_code(KeyCodes::Keyboard4Dollar, 10, 4);
     keys.set_code(KeyCodes::Keyboard5Percent, 11, 4);
 
+    keys.set_code(KeyCodes::Layer4, 19, 4);
+
     keys.set_interval(
         KeyCodes::MouseScrollUp,
         Duration::from_millis(SCROLL_TIME),
@@ -243,6 +246,7 @@ pub fn load_key_config<const S: usize>(keys: &mut Keys<S>) {
     keys.set_toggle_layer(KeyCodes::Layer0, 38, 4);
     keys.set_code(KeyCodes::MouseLeftClick, 39, 4);
     keys.set_code(KeyCodes::MouseRightClick, 40, 4);
+    keys.set_toggle_layer(KeyCodes::Layer0, 41, 3);
 
     keys.set_slave(21..42);
 }
