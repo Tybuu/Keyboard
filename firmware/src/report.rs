@@ -1,8 +1,9 @@
-use heapless::FnvIndexSet;
+use embassy_time::Instant;
+use heapless::{FnvIndexSet, Vec};
 
 use crate::{
     descriptor::{KeyboardReportNKRO, MouseReport},
-    keys::{Keys, ScanCode},
+    keys::{Keys, ModCombo, ScanCode},
 };
 
 fn set_bit(num: &mut u8, bit: u8, pos: u8) {
@@ -36,18 +37,9 @@ impl Report {
     pub fn generate_report<const S: usize>(
         &mut self,
         keys: &mut Keys<S>,
-    ) -> (Option<KeyboardReportNKRO>, Option<MouseReport>) {
-        match keys.get_layer(self.current_layer) {
-            Some(layer) => {
-                if layer.toggle {
-                    self.reset_layer = layer.pos;
-                }
-                self.current_layer = layer.pos
-            }
-            None => self.current_layer = self.reset_layer,
-        }
-
-        let mut pressed_keys = FnvIndexSet::<ScanCode, 64>::new();
+    ) -> (Option<&KeyboardReportNKRO>, Option<&MouseReport>) {
+        let mut new_layer = None;
+        let mut pressed_keys = Vec::<ScanCode, 64>::new();
         let mut new_key_report = KeyboardReportNKRO::default();
         let mut new_mouse_report = MouseReport::default();
 
@@ -76,20 +68,41 @@ impl Report {
                 ScanCode::Scroll(code) => {
                     new_mouse_report.wheel += code;
                 }
-                _ => {}
+                ScanCode::Layer(layer) => match new_layer {
+                    Some(_) => {
+                        if layer.toggle {
+                            new_layer = Some(layer);
+                        }
+                    }
+                    None => {
+                        new_layer = Some(layer);
+                    }
+                },
+                ScanCode::None => {}
             };
+        }
+        match new_layer {
+            Some(layer) => {
+                if layer.toggle {
+                    self.reset_layer = layer.pos;
+                }
+                self.current_layer = layer.pos;
+            }
+            None => {
+                self.current_layer = self.reset_layer;
+            }
         }
         let mut returned_report = (None, None);
         if self.key_report != new_key_report {
             self.key_report = new_key_report;
-            returned_report.0 = Some(self.key_report);
+            returned_report.0 = Some(&self.key_report);
         }
         // Second bool condtion is needed as the mouse report is relative.
         // If a key is held, we need to constantly send reports to represent
         // that state to the host
         if self.mouse_report != new_mouse_report || new_mouse_report != MouseReport::default() {
             self.mouse_report = new_mouse_report;
-            returned_report.1 = Some(new_mouse_report);
+            returned_report.1 = Some(&self.mouse_report);
         }
         returned_report
     }

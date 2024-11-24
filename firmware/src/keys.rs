@@ -1,15 +1,18 @@
 use core::{borrow::BorrowMut, ops::Range};
 
 use embassy_time::{Duration, Instant};
-use heapless::{FnvIndexSet, Vec};
+use heapless::Vec;
 
 use crate::codes::KeyCodes;
 
-const DEFAULT_RELEASE_SCALE: f32 = 0.20;
-const DEFAULT_ACTUATE_SCALE: f32 = 0.25;
-const TOLERANCE_SCALE: f32 = 0.075;
+const DEFAULT_RELEASE_SCALE: f32 = 0.40;
+const DEFAULT_ACTUATE_SCALE: f32 = 0.45;
+const TOLERANCE_SCALE: f32 = 0.1;
 const BUFFER_SIZE: u16 = 1;
-const HOLD_TIME: Duration = Duration::from_millis(200);
+const HOLD_TIME: Duration = Duration::from_millis(150);
+
+const NUM_COMB: usize = 4;
+const HOLD_DURATION: Duration = Duration::from_millis(50);
 
 pub const NUM_LAYERS: usize = 10;
 
@@ -53,7 +56,7 @@ impl DigitalPosition {
         let avg = sum / BUFFER_SIZE as u32;
         if self.is_pressed && avg > self.release_point {
             self.is_pressed = false;
-        } else if !self.is_pressed && avg < self.actuation_point {
+        } else if !self.is_pressed && avg <= self.actuation_point {
             self.is_pressed = true;
         }
     }
@@ -89,8 +92,8 @@ impl WootingPosition {
     pub fn new(lowest_point: u32, highest_point: u32) -> Self {
         let dif = (highest_point - lowest_point) as f32;
         Self {
-            buffer: [0; BUFFER_SIZE as usize],
-            avg: (highest_point - (DEFAULT_RELEASE_SCALE * dif) as u32),
+            buffer: [highest_point; BUFFER_SIZE as usize],
+            avg: (highest_point),
             buffer_pos: 0,
             release_point: (highest_point - (DEFAULT_RELEASE_SCALE * dif) as u32),
             actuation_point: (highest_point - (DEFAULT_ACTUATE_SCALE * dif) as u32),
@@ -157,11 +160,19 @@ impl Position {
 
     /// Updates the buf of the key. Updating the buf will also update
     /// the value returned from the is_pressed function
-    fn update_buf(&mut self, buf: u16) {
-        match self {
-            Position::Digital(pos) => pos.update_buf(buf),
-            Position::Wooting(pos) => pos.update_buf(buf),
-            Position::Slave(pos) => *pos = buf as u8,
+    fn update_buf(&mut self, buf: u16, reverse: bool) {
+        if reverse {
+            match self {
+                Position::Digital(pos) => pos.update_buf(4095 - buf),
+                Position::Wooting(pos) => pos.update_buf(4095 - buf),
+                Position::Slave(pos) => *pos = buf as u8,
+            }
+        } else {
+            match self {
+                Position::Digital(pos) => pos.update_buf(buf),
+                Position::Wooting(pos) => pos.update_buf(buf),
+                Position::Slave(pos) => *pos = buf as u8,
+            }
         }
     }
 
@@ -307,6 +318,86 @@ enum ModTapResult {
     None,
 }
 
+#[derive(Copy, Clone, Debug)]
+enum ModComboState {
+    Combo(usize),
+    Normal,
+    Holding,
+    None,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct ModCombo {
+    tap_code: ScanCode,
+    hold_code: [ScanCode; NUM_COMB],
+    other_index: [Option<usize>; NUM_COMB],
+    start_time: Instant,
+    combo: ModComboState,
+}
+
+impl ModCombo {
+    fn new(
+        tap_code: ScanCode,
+        hold_code: [ScanCode; NUM_COMB],
+        other_index: [Option<usize>; NUM_COMB],
+    ) -> Self {
+        Self {
+            tap_code,
+            hold_code,
+            other_index,
+            start_time: Instant::now(),
+            combo: ModComboState::None,
+        }
+    }
+
+    fn get_code(
+        &mut self,
+        pressed: bool,
+        other_pressed: ModComboState,
+        other_index: usize,
+    ) -> Option<ScanCode> {
+        if pressed {
+            match self.combo {
+                ModComboState::Combo(num) => Some(self.hold_code[num]),
+                ModComboState::Normal => Some(self.tap_code),
+                ModComboState::Holding => {
+                    if self.start_time.elapsed() >= HOLD_DURATION {
+                        self.combo = ModComboState::Normal;
+                        return Some(self.tap_code);
+                    }
+                    match other_pressed {
+                        ModComboState::Normal | ModComboState::Combo(_) => {
+                            self.combo = ModComboState::Normal;
+                            Some(self.tap_code)
+                        }
+                        ModComboState::Holding => {
+                            self.combo = ModComboState::Combo(other_index);
+                            Some(self.hold_code[other_index])
+                        }
+                        ModComboState::None => None,
+                    }
+                }
+                ModComboState::None => {
+                    self.combo = ModComboState::Holding;
+                    self.start_time = Instant::now();
+                    None
+                }
+            }
+        } else {
+            match self.combo {
+                ModComboState::Holding => {
+                    self.combo = ModComboState::None;
+                    Some(self.tap_code)
+                }
+                _ => {
+                    self.combo = ModComboState::None;
+                    None
+                }
+            }
+        }
+    }
+}
+
 /// Represents all the different types of scancodes.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub enum ScanCode {
@@ -323,7 +414,7 @@ pub enum ScanCode {
 /// Wrapper around ScanCode to allow different fuctionalites when pressed
 /// such as sending multiple keys
 #[derive(Copy, Clone, Debug)]
-pub enum ScanCodeBehavior {
+pub enum ScanCodeBehavior<const S: usize> {
     Single(ScanCode),
     Double(ScanCode, ScanCode),
     Triple(ScanCode, ScanCode, ScanCode),
@@ -335,21 +426,25 @@ pub enum ScanCodeBehavior {
     },
     IntervalPresses(IntervalPresses),
     ModTap(ModTap),
+    ModCombo(ModCombo),
+    Function(fn(&mut Keys<S>)),
 }
 
 #[derive(Copy, Clone, Debug)]
-struct Key {
+struct Key<const S: usize> {
     pos: Position,
-    codes: [ScanCodeBehavior; NUM_LAYERS],
+    codes: [ScanCodeBehavior<S>; NUM_LAYERS],
     pub current_layer: Option<usize>,
+    reverse: bool,
 }
 
-impl Key {
+impl<const S: usize> Key<S> {
     fn default() -> Self {
         Self {
-            pos: Position::Wooting(WootingPosition::new(1100, 2000)),
+            pos: Position::Digital(DigitalPosition::new(1300, 1900)),
             codes: [ScanCodeBehavior::Single(ScanCode::Letter(0)); NUM_LAYERS],
             current_layer: None,
+            reverse: true,
         }
     }
 
@@ -376,20 +471,32 @@ impl Key {
     }
 
     fn update_buf(&mut self, buf: u16) {
-        self.pos.update_buf(buf);
+        self.pos.update_buf(buf, self.reverse);
     }
 
     /// Pushes the scan code into the provided index set depending on the Key's position
     pub fn get_buf(&self) -> u16 {
         self.pos.get_buf()
     }
+
+    fn get_hold_state(&mut self, layer: usize) -> ModComboState {
+        match self.codes[layer] {
+            ScanCodeBehavior::ModCombo(val) => val.combo,
+            _ => ModComboState::None,
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
 pub struct Keys<const S: usize> {
-    keys: [Key; S],
+    keys: [Key<S>; S],
 }
 
+enum PressResult {
+    Pressed,
+    Function,
+    None,
+}
 impl<const S: usize> Keys<S> {
     /// Returns a Keys struct
     pub fn default() -> Self {
@@ -446,13 +553,31 @@ impl<const S: usize> Keys<S> {
             ScanCodeBehavior::ModTap(ModTap::new(p_code.get_scan_code(), h_code.get_scan_code()));
     }
 
+    pub fn set_modcomb(
+        &mut self,
+        p_code: KeyCodes,
+        h_code: [Option<KeyCodes>; NUM_COMB],
+        other_index: [Option<usize>; NUM_COMB],
+        index: usize,
+        layer: usize,
+    ) {
+        let mut h_codes = [ScanCode::None; NUM_COMB];
+        for i in 0..NUM_COMB {
+            match h_code[i] {
+                Some(code) => h_codes[i] = code.get_scan_code(),
+                None => {}
+            }
+        }
+        self.keys[index].codes[layer] =
+            ScanCodeBehavior::ModCombo(ModCombo::new(p_code.get_scan_code(), h_codes, other_index));
+    }
+
     /// Sets the following indexed to be a toggle layer key for the passed in layer. Any none layer
     /// keys passed in will be set like in set_code
     pub fn set_toggle_layer(&mut self, layer_code: KeyCodes, index: usize, layer: usize) {
         match layer_code.get_scan_code() {
             ScanCode::Layer(_) => {}
             _ => {
-                self.keys[1000000].current_layer = None;
                 panic!("bruh")
             }
         }
@@ -464,6 +589,14 @@ impl<const S: usize> Keys<S> {
         for i in range {
             self.keys[i as usize].set_slave();
         }
+    }
+
+    pub fn set_reverse(&mut self, val: bool, index: usize) {
+        self.keys[index].reverse = val;
+    }
+
+    pub fn set_function(&mut self, f: fn(&mut Keys<S>), index: usize, layer: usize) {
+        self.keys[index].codes[layer] = ScanCodeBehavior::Function(f);
     }
 
     /// Updates the indexed key with the provided reading
@@ -491,34 +624,81 @@ impl<const S: usize> Keys<S> {
         &mut self,
         index: usize,
         layer: usize,
-        set: &mut FnvIndexSet<ScanCode, 64>,
-    ) -> bool {
+        set: &mut Vec<ScanCode, 64>,
+    ) -> PressResult {
+        let pressed = self.keys[index].pos.is_pressed();
+        let mut other_index = 0;
+        let mut unpressed = false;
+        let mut broke = false;
+        let other_pressed = ModComboState::None;
+        // let other_pressed = if let ScanCodeBehavior::ModCombo(val) = self.keys[index].codes[layer] {
+        //     let mut res = ModComboState::None;
+        //     'outer: for i in 0..NUM_COMB {
+        //         let other = match val.other_index[i] {
+        //             Some(num) => num,
+        //             None => break 'outer,
+        //         };
+        //         match self.keys[other].codes[layer] {
+        //             ScanCodeBehavior::ModCombo(val_o) => match val_o.combo {
+        //                 ModComboState::Combo(num) => {
+        //                     res = val_o.combo;
+        //                     if val_o.other_index[num].unwrap() == index {
+        //                         res = ModComboState::Holding;
+        //                         other_index = i;
+        //                         broke = true;
+        //                         break 'outer;
+        //                     }
+        //                 }
+        //                 ModComboState::Normal => {
+        //                     res = ModComboState::Normal;
+        //                 }
+        //                 ModComboState::Holding => {
+        //                     res = ModComboState::Holding;
+        //                     other_index = i;
+        //                     broke = true;
+        //                     break 'outer;
+        //                 }
+        //                 ModComboState::None => {
+        //                     unpressed = true;
+        //                 }
+        //             },
+        //             _ => {}
+        //         };
+        //     }
+        //     if unpressed && !broke {
+        //         ModComboState::None
+        //     } else {
+        //         res
+        //     }
+        // } else {
+        //     ModComboState::None
+        // };
         match self.keys[index].codes[layer].borrow_mut() {
             ScanCodeBehavior::Single(code) => {
-                if self.keys[index].pos.is_pressed() {
-                    set.insert(*code).unwrap();
-                    true
+                if pressed {
+                    set.push(*code).unwrap();
+                    PressResult::Pressed
                 } else {
-                    false
+                    PressResult::None
                 }
             }
             ScanCodeBehavior::Double(code0, code1) => {
-                if self.keys[index].pos.is_pressed() {
-                    set.insert(*code0).unwrap();
-                    set.insert(*code1).unwrap();
-                    true
+                if pressed {
+                    set.push(*code0).unwrap();
+                    set.push(*code1).unwrap();
+                    PressResult::Pressed
                 } else {
-                    false
+                    PressResult::None
                 }
             }
             ScanCodeBehavior::Triple(code0, code1, code2) => {
-                if self.keys[index].pos.is_pressed() {
-                    set.insert(*code0).unwrap();
-                    set.insert(*code1).unwrap();
-                    set.insert(*code2).unwrap();
-                    true
+                if pressed {
+                    set.push(*code0).unwrap();
+                    set.push(*code1).unwrap();
+                    set.push(*code2).unwrap();
+                    PressResult::Pressed
                 } else {
-                    false
+                    PressResult::None
                 }
             }
             ScanCodeBehavior::CombinedKey {
@@ -526,119 +706,59 @@ impl<const S: usize> Keys<S> {
                 normal_code,
                 combined_code: other_key_code,
             } => {
-                if self.keys[index].pos.is_pressed() {
+                if pressed {
                     if self.keys[*other_index].pos.is_pressed() {
-                        set.insert(*other_key_code).unwrap();
-                        true
+                        set.push(*other_key_code).unwrap();
+                        PressResult::Pressed
                     } else {
-                        set.insert(*normal_code).unwrap();
-                        true
+                        set.push(*normal_code).unwrap();
+                        PressResult::Pressed
                     }
                 } else {
-                    false
+                    PressResult::None
                 }
             }
             ScanCodeBehavior::IntervalPresses(val) => {
-                if self.keys[index].pos.is_pressed() {
-                    set.insert(val.get_code()).unwrap();
-                    true
+                if pressed {
+                    set.push(val.get_code()).unwrap();
+                    PressResult::Pressed
                 } else {
                     val.starting_time = None;
-                    false
+                    PressResult::None
                 }
             }
             ScanCodeBehavior::ModTap(val) => {
                 match val.get_code(self.keys[index].pos.is_pressed()) {
                     ModTapResult::Pressed(code) => {
-                        set.insert(code).unwrap();
-                        true
+                        set.push(code).unwrap();
+                        PressResult::Pressed
                     }
                     ModTapResult::Holding => {
-                        // Held keys need to stay in the same layer so we'll have to return true
-                        true
+                        // Held keys need to stay in the same layer so we'll have to return PresResult::Pressed
+                        PressResult::Pressed
                     }
-                    ModTapResult::None => false,
+                    ModTapResult::None => PressResult::None,
                 }
             }
-        }
-    }
-
-    /// Returns the proper layer code from all the keys. Use this method
-    /// to get the layer rather than get_pressed_code as calling get_pressed_code
-    /// twice can lead to unintended behaviour for certain ScanCodeBehavior types
-    fn get_layer_code(&mut self, index: usize, layer: usize) -> ScanCode {
-        match self.keys[index].codes[layer].borrow_mut() {
-            ScanCodeBehavior::Single(code) => {
-                if self.keys[index].pos.is_pressed() {
-                    if let ScanCode::Layer(res) = code {
-                        ScanCode::Layer(*res)
-                    } else {
-                        ScanCode::None
+            ScanCodeBehavior::ModCombo(val) => {
+                let pressed = pressed;
+                match val.get_code(pressed, other_pressed, other_index) {
+                    Some(code) => {
+                        set.push(code).unwrap();
+                        PressResult::Pressed
                     }
+                    None => PressResult::None,
+                }
+            }
+            ScanCodeBehavior::Function(f) => {
+                if pressed {
+                    (f)(self);
+                    PressResult::Function
                 } else {
-                    ScanCode::None
+                    PressResult::None
                 }
-            }
-            ScanCodeBehavior::CombinedKey {
-                other_index,
-                normal_code,
-                combined_code,
-            } => {
-                if self.keys[index].pos.is_pressed() {
-                    if self.keys[*other_index].pos.is_pressed() {
-                        if let ScanCode::Layer(res) = combined_code {
-                            ScanCode::Layer(*res)
-                        } else {
-                            ScanCode::None
-                        }
-                    } else {
-                        if let ScanCode::Layer(res) = normal_code {
-                            ScanCode::Layer(*res)
-                        } else {
-                            ScanCode::None
-                        }
-                    }
-                } else {
-                    ScanCode::None
-                }
-            }
-            ScanCodeBehavior::ModTap(val) => {
-                match val.get_layer(self.keys[index].pos.is_pressed()) {
-                    ModTapResult::Pressed(code) => {
-                        if let ScanCode::Layer(res) = code {
-                            ScanCode::Layer(res)
-                        } else {
-                            ScanCode::None
-                        }
-                    }
-                    _ => ScanCode::None,
-                }
-            }
-            // Layer keys can only be a single code
-            _ => ScanCode::None,
-        }
-    }
-
-    /// Get the current layer value from all the keys. Toggle layers gets priority. Note that if this method
-    /// was called earlier and returned a pressed scan value, it will use the previous layer
-    /// rather than the provided layer. This allows keys to hold their values even when switching
-    /// layers. When the key is released, it will start using the provided layer code
-    pub fn get_layer(&mut self, layer: usize) -> Option<Layer> {
-        let mut new_layer: Option<Layer> = None;
-        for i in 0..S {
-            let layer = match self.keys[i].current_layer {
-                Some(num) => num,
-                None => layer,
-            };
-            if let ScanCode::Layer(code) = self.get_layer_code(i, layer) {
-                new_layer = Some(code);
-                if code.toggle {
-                    break;
-                }
-                self.keys[i].current_layer = Some(layer);
             }
         }
-        new_layer
     }
 
     /// Returns all the pressed scancodes in the Keys struct. Returns it through
@@ -646,16 +766,23 @@ impl<const S: usize> Keys<S> {
     /// through the get_layer method. The passed in vector should be empty.
     /// Note that if a key is held, it will ignore the passed in layer and use the
     /// previous layer it's holding
-    pub fn get_keys(&mut self, layer: usize, set: &mut FnvIndexSet<ScanCode, 64>) {
+    pub fn get_keys(&mut self, layer: usize, set: &mut Vec<ScanCode, 64>) {
         for i in 0..S {
             let layer = match self.keys[i].current_layer {
                 Some(num) => num,
                 None => layer,
             };
-            if self.get_pressed_code(i, layer, set) {
-                self.keys[i].current_layer = Some(layer);
-            } else {
-                self.keys[i].current_layer = None;
+            match self.get_pressed_code(i, layer, set) {
+                PressResult::Function => {
+                    set.clear();
+                    break;
+                }
+                PressResult::Pressed => {
+                    self.keys[i].current_layer = Some(layer);
+                }
+                PressResult::None => {
+                    self.keys[i].current_layer = None;
+                }
             }
         }
     }

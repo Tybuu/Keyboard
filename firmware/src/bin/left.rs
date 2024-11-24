@@ -17,7 +17,7 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_time::Timer;
 use keyboard::descriptor::{BufferReport, KeyboardReportNKRO, MouseReport};
-use keyboard::key_config::load_key_config;
+use keyboard::key_config::{load_callum, load_key_config, load_trial};
 use keyboard::keys::Keys;
 
 use embassy_rp::usb::Driver;
@@ -134,7 +134,7 @@ async fn main(_spawner: Spawner) {
     find_order(&mut order);
 
     let mut keys = Keys::<NUM_KEYS>::default();
-    load_key_config(&mut keys);
+    load_callum(&mut keys);
 
     let mut report = Report::default();
 
@@ -152,7 +152,7 @@ async fn main(_spawner: Spawner) {
                 let chan = pos % 4;
                 if chan == 0 {
                     change_sel(&mut sel0, &mut sel1, &mut sel2, pos / 4);
-                    Timer::after_micros(2).await;
+                    Timer::after_micros(1).await;
                 }
                 match chan {
                     0 => keys.update_buf(i, adc.read(&mut a0).await.unwrap()),
@@ -173,13 +173,13 @@ async fn main(_spawner: Spawner) {
             let (key_report, m_report) = report.generate_report(&mut keys);
             match key_report {
                 Some(report) => {
-                    key_writer.write_serialize(&report).await.unwrap();
+                    key_writer.write_serialize(report).await.unwrap();
                 }
                 None => {}
             }
             match m_report {
                 Some(report) => {
-                    mouse_writer.write_serialize(&report).await.unwrap();
+                    mouse_writer.write_serialize(report).await.unwrap();
                 }
                 None => {}
             }

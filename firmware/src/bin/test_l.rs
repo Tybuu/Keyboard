@@ -9,14 +9,16 @@ use core::sync::atomic::{AtomicBool, Ordering};
 
 use defmt::info;
 use embassy_executor::Spawner;
-use embassy_futures::join::join;
+use embassy_futures::join::join3;
 use embassy_rp::adc::{self, Adc, Channel, Config as AdcConfig};
 use embassy_rp::gpio::{Pin, Pull};
+use embassy_rp::peripherals::USB;
 use embassy_rp::{bind_interrupts, gpio, peripherals, usb};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
-use embassy_time::Timer;
-use keyboard::descriptor::{BufferReport, KeyboardReportNKRO, MouseReport, SlaveKeyReport};
+use embassy_time::{Instant, Timer};
+use keyboard::descriptor::{BufferReport, KeyboardReportNKRO, MouseReport};
+use keyboard::key_config::{load_callum, load_key_config, load_trial};
 use keyboard::keys::Keys;
 
 use embassy_rp::usb::Driver;
@@ -24,6 +26,7 @@ use embassy_usb::class::hid::{HidReaderWriter, HidWriter, State};
 use embassy_usb::{Builder, Config, Handler};
 use gpio::{Level, Output};
 use keyboard::report::Report;
+use log::logger;
 use usbd_hid::descriptor::SerializedDescriptor;
 use {defmt_rtt as _, panic_probe as _};
 
@@ -32,13 +35,14 @@ bind_interrupts!(struct Irqs {
     ADC_IRQ_FIFO => adc::InterruptHandler;
 });
 
+#[embassy_executor::task]
+async fn logger_task(driver: Driver<'static, USB>) {
+    embassy_usb_logger::run!(1024, log::LevelFilter::Info, driver);
+}
+
 static MUX: Mutex<CriticalSectionRawMutex, [u8; 3]> = Mutex::new([0u8; 3]);
 
-const SCROLL_TIME: u64 = 500;
-const MOUSE_POINTER_TIME: u64 = 10;
-
-const NUM_KEYS: usize = 21;
-
+pub const NUM_KEYS: usize = 42;
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
     info!("Device Started!");
@@ -46,68 +50,10 @@ async fn main(_spawner: Spawner) {
     // Create the driver, from the HAL.
     let driver = Driver::new(p.USB, Irqs);
 
-    // Create embassy-usb Config
-    let mut config = Config::new(0x727, 0x727);
-    config.manufacturer = Some("Tybeast Corp.");
-    config.product = Some("Tybeast Ones (Right)");
-    config.max_power = 500;
-    config.max_packet_size_0 = 64;
-    config.composite_with_iads = true;
-    config.device_class = 0xef;
-    config.device_sub_class = 0x02;
-    config.device_protocol = 0x01;
-
-    // Create embassy-usb DeviceBuilder using the driver and config.
-    // It needs some buffers for building the descriptors.
-    let mut config_descriptor = [0; 256];
-    let mut bos_descriptor = [0; 256];
-    let mut msos_descriptor = [0; 256];
-    let mut control_buf = [0; 64];
-    let mut device_handler = MyDeviceHandler::new();
-
-    let mut key_state = State::new();
-    let mut slave_state = State::new();
-    let mut com_state = State::new();
-    let mut mouse_state = State::new();
-
-    let mut builder = Builder::new(
-        driver,
-        config,
-        &mut config_descriptor,
-        &mut bos_descriptor,
-        &mut msos_descriptor,
-        &mut control_buf,
-    );
-
-    builder.handler(&mut device_handler);
-
-    // Create classes on the builder.
-    let key_config = embassy_usb::class::hid::Config {
-        report_descriptor: SlaveKeyReport::desc(),
-        request_handler: None,
-        poll_ms: 1,
-        max_packet_size: 32,
-    };
-    let com_config = embassy_usb::class::hid::Config {
-        report_descriptor: BufferReport::desc(),
-        request_handler: None,
-        poll_ms: 60,
-        max_packet_size: 64,
-    };
-
-    let mut key_writer = HidWriter::<_, 29>::new(&mut builder, &mut key_state, key_config);
-    let com_hid = HidReaderWriter::<_, 32, 64>::new(&mut builder, &mut com_state, com_config);
-
-    let (mut c_reader, mut c_writer) = com_hid.split();
-
-    // Build the builder.
-    let mut usb = builder.build();
-    let usb_fut = usb.run();
-
     // Sel Pins
-    let mut sel0 = Output::new(p.PIN_0, Level::Low);
+    let mut sel0 = Output::new(p.PIN_2, Level::Low);
     let mut sel1 = Output::new(p.PIN_1, Level::Low);
-    let mut sel2 = Output::new(p.PIN_2, Level::Low);
+    let mut sel2 = Output::new(p.PIN_0, Level::Low);
 
     // Adc
     let mut adc = Adc::new(p.ADC, Irqs, AdcConfig::default());
@@ -116,49 +62,90 @@ async fn main(_spawner: Spawner) {
     let mut a1 = Channel::new_pin(p.PIN_28, Pull::None);
     let mut a0 = Channel::new_pin(p.PIN_29, Pull::None);
 
-    let mut order: [usize; NUM_KEYS] = [
-        4, 5, 18, 2, 14, 7, 0, 9, 1, 6, 11, 3, 12, 17, 13, 10, 19, 15, 20, 16, 8,
+    let mut order: [usize; NUM_KEYS / 2] = [
+        7, 14, 2, 18, 5, 0, 3, 11, 6, 1, 9, 4, 15, 19, 10, 13, 17, 8, 12, 16, 20,
     ];
     find_order(&mut order);
 
     let mut keys = Keys::<NUM_KEYS>::default();
+    load_callum(&mut keys);
 
-    keys.set_reverse(false, 5);
-    keys.set_reverse(false, 11);
-    keys.set_reverse(false, 17);
-
-    let mut report = SlaveKeyReport::default();
+    let mut report = Report::default();
 
     // Main keyboard loop
-    let usb_key_in = async {
-        loop {
-            let mut pos = 0;
-            for i in order {
-                let chan = pos % 4;
-                if chan == 0 {
-                    change_sel(&mut sel0, &mut sel1, &mut sel2, pos / 4);
-                    Timer::after_micros(1).await;
-                }
-                match chan {
-                    0 => keys.update_buf(i, adc.read(&mut a0).await.unwrap()),
-                    1 => keys.update_buf(i, adc.read(&mut a1).await.unwrap()),
-                    2 => keys.update_buf(i, adc.read(&mut a2).await.unwrap()),
-                    3 => keys.update_buf(i, adc.read(&mut a3).await.unwrap()),
-                    _ => {}
-                }
-                pos += 1;
+    _spawner.spawn(logger_task(driver)).unwrap();
+    loop {
+        let mut slave_keys = [0u8; 3];
+        // {
+        //     let shared = MUX.lock().await;
+        //     slave_keys = *shared;
+        // }
+        let mut pos = 0;
+        // Left Keyboard Scan
+        for i in order {
+            // Equivalent to pos % 4
+            let chan = pos & 0b11;
+            if chan == 0 {
+                // equivalent to pos / 4
+                change_sel(&mut sel0, &mut sel1, &mut sel2, pos >> 2);
             }
-            let key_report = report.generate_report(&mut keys);
-            match key_report {
-                Some(report) => {
-                    key_writer.write_serialize(&report).await.unwrap();
-                }
-                None => {}
+            match chan {
+                0 => keys.update_buf(i, 4095 - adc.read(&mut a0).await.unwrap()),
+                1 => keys.update_buf(i, 4095 - adc.read(&mut a1).await.unwrap()),
+                2 => keys.update_buf(i, 4095 - adc.read(&mut a2).await.unwrap()),
+                3 => keys.update_buf(i, 4095 - adc.read(&mut a3).await.unwrap()),
+                _ => {}
             }
+            pos += 1;
         }
-    };
+        // Right Keyboard Scan
+        for i in 0..21 {
+            // equivalent to i / 8
+            let a_idx = (i >> 3) as usize;
+            // equivalent to i % 8
+            let b_idx = i & 0b111;
+            let val = (slave_keys[a_idx] >> b_idx) & 1;
+            keys.update_buf(i + 21, val as u16);
+        }
+        let (key_report, m_report) = report.generate_report(&mut keys);
+        log::info!(
+            "[{}, {}, {}, {}, {}, {}",
+            keys.get_buf(0),
+            keys.get_buf(1),
+            keys.get_buf(2),
+            keys.get_buf(3),
+            keys.get_buf(4),
+            keys.get_buf(5),
+        );
 
-    join(usb_key_in, usb_fut).await;
+        log::info!(
+            "{}, {}, {}, {}, {}, {}",
+            keys.get_buf(6),
+            keys.get_buf(7),
+            keys.get_buf(8),
+            keys.get_buf(9),
+            keys.get_buf(10),
+            keys.get_buf(11),
+        );
+
+        log::info!(
+            "{}, {}, {}, {}, {}, {}",
+            keys.get_buf(12),
+            keys.get_buf(13),
+            keys.get_buf(14),
+            keys.get_buf(15),
+            keys.get_buf(16),
+            keys.get_buf(17),
+        );
+
+        log::info!(
+            "{}, {}, {}",
+            keys.get_buf(18),
+            keys.get_buf(19),
+            keys.get_buf(20),
+        );
+        Timer::after_millis(20).await;
+    }
 }
 
 struct MyDeviceHandler {
@@ -206,7 +193,7 @@ impl Handler for MyDeviceHandler {
 }
 
 fn find_order(ary: &mut [usize]) {
-    let mut new_ary = [0usize; 21 as usize];
+    let mut new_ary = [0usize; NUM_KEYS / 2];
     for i in 0..ary.len() {
         for j in 0..ary.len() {
             if ary[j as usize] == i {
@@ -217,6 +204,7 @@ fn find_order(ary: &mut [usize]) {
     ary.copy_from_slice(&new_ary);
 }
 
+/// Change the sel pins to represent the state represented in num
 fn change_sel<P0: Pin, P1: Pin, P2: Pin>(
     sel0: &mut Output<P0>,
     sel1: &mut Output<P1>,

@@ -1,3 +1,5 @@
+use core::fmt;
+
 use heapless::Vec;
 use usbd_hid::descriptor::gen_hid_descriptor;
 use usbd_hid::descriptor::{
@@ -34,6 +36,16 @@ impl KeyboardReportNKRO {
             modifier: 0,
             nkro_keycodes: [0; 28],
         }
+    }
+}
+
+impl fmt::Display for KeyboardReportNKRO {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Modifier: {}\n Codes: {:?}",
+            self.modifier, self.nkro_keycodes
+        )
     }
 }
 
