@@ -86,6 +86,7 @@ pub struct MouseReport {
 
 #[gen_hid_descriptor(
     (collection = APPLICATION, usage_page = 0xFF69, usage = 0x01) = {
+        input=input;
         output=output;
     }
 )]
@@ -93,6 +94,7 @@ pub struct MouseReport {
 #[allow(dead_code)]
 #[derive(Default)]
 pub struct BufferReport {
+    pub input: [u8; 32],
     pub output: [u8; 32],
 }
 

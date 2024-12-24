@@ -23,6 +23,7 @@ embassy-rp = { version = "*", features = [
   "time-driver",
   "critical-section-impl",
 ] }
+rp2040-hal = "*"
 embassy-usb = { version = "*", features = ["defmt"] }
 embassy-futures = { version = "*" }
 embassy-usb-logger = { version = "*" }

@@ -5,10 +5,10 @@ use heapless::Vec;
 
 use crate::codes::KeyCodes;
 
-const DEFAULT_RELEASE_SCALE: f32 = 0.40;
-const DEFAULT_ACTUATE_SCALE: f32 = 0.45;
+const DEFAULT_RELEASE_SCALE: f32 = 0.30;
+const DEFAULT_ACTUATE_SCALE: f32 = 0.35;
 const TOLERANCE_SCALE: f32 = 0.1;
-const BUFFER_SIZE: u16 = 1;
+const BUFFER_SIZE: usize = 1;
 const HOLD_TIME: Duration = Duration::from_millis(150);
 
 const NUM_COMB: usize = 4;
@@ -16,11 +16,14 @@ const HOLD_DURATION: Duration = Duration::from_millis(50);
 
 pub const NUM_LAYERS: usize = 10;
 
+pub const DEFAULT_HIGH: u32 = 1700;
+pub const DEFAULT_LOW: u32 = 1400;
+
 // Makes hall effect switches act like a normal mechanical switch
 #[derive(Copy, Clone, Default, Debug)]
 struct DigitalPosition {
     buffer: [u32; BUFFER_SIZE as usize], // Take multiple readings to smooth out buffer
-    buffer_pos: u16,
+    buffer_pos: usize,
     release_point: u32,
     actuation_point: u32,
     lowest_point: u32,
@@ -30,16 +33,16 @@ struct DigitalPosition {
 
 impl DigitalPosition {
     /// Creates a new [`DigitalPosition`].
-    pub fn new(lowest_point: u32, highest_point: u32) -> Self {
-        let dif = (highest_point - lowest_point) as f32;
+    pub const fn default() -> Self {
+        let dif = (DEFAULT_HIGH - DEFAULT_LOW) as f32;
         Self {
             buffer: [0; BUFFER_SIZE as usize],
             buffer_pos: 0,
-            release_point: (highest_point - (DEFAULT_RELEASE_SCALE * dif) as u32),
-            actuation_point: (highest_point - (DEFAULT_ACTUATE_SCALE * dif) as u32),
+            release_point: (DEFAULT_HIGH - (DEFAULT_RELEASE_SCALE * dif) as u32),
+            actuation_point: (DEFAULT_HIGH - (DEFAULT_ACTUATE_SCALE * dif) as u32),
             is_pressed: false,
-            lowest_point,
-            highest_point,
+            lowest_point: DEFAULT_LOW,
+            highest_point: DEFAULT_HIGH,
         }
     }
 
@@ -47,17 +50,18 @@ impl DigitalPosition {
     // is higher than the release point, is_pressed is false, and if
     // the buf is lower than the acutation point, is_pressed is true
     fn update_buf(&mut self, pos: u16) {
-        self.buffer[self.buffer_pos as usize] = pos as u32;
+        self.buffer[self.buffer_pos] = pos as u32;
         self.buffer_pos = (self.buffer_pos + 1) % BUFFER_SIZE;
         let mut sum = 0;
         for buf in self.buffer {
             sum += buf;
         }
         let avg = sum / BUFFER_SIZE as u32;
-        if self.is_pressed && avg > self.release_point {
-            self.is_pressed = false;
-        } else if !self.is_pressed && avg <= self.actuation_point {
+        self.calibrate(avg);
+        if avg <= self.actuation_point {
             self.is_pressed = true;
+        } else if avg > self.release_point {
+            self.is_pressed = false;
         }
     }
 
@@ -70,7 +74,42 @@ impl DigitalPosition {
         for buf in self.buffer {
             sum += buf as u16;
         }
-        sum / BUFFER_SIZE
+        sum / BUFFER_SIZE as u16
+    }
+
+    // Keep calling this function with adc readings
+    // until it returns true to calibrate keys
+    fn setup(&mut self, reading: u16) -> bool {
+        if self.buffer[0] == 0 || self.buffer_pos != 0 {
+            self.buffer[self.buffer_pos] = reading as u32;
+            self.buffer_pos = (self.buffer_pos + 1) % BUFFER_SIZE as usize;
+            false
+        } else {
+            let mut buf = 0;
+            for num in self.buffer {
+                buf += num;
+            }
+            let avg = buf / BUFFER_SIZE as u32;
+            self.calibrate(avg);
+            true
+        }
+    }
+
+    fn calibrate(&mut self, buf: u32) {
+        let mut changed = false;
+        if self.highest_point < buf {
+            self.highest_point = buf;
+            changed = true;
+        } else if self.lowest_point > buf {
+            self.lowest_point = buf;
+            changed = true;
+        }
+
+        if changed {
+            let dif = (self.highest_point - self.lowest_point) as f32;
+            self.release_point = self.highest_point - (DEFAULT_RELEASE_SCALE * dif) as u32;
+            self.actuation_point = self.highest_point - (DEFAULT_ACTUATE_SCALE * dif) as u32;
+        }
     }
 }
 
@@ -78,7 +117,7 @@ impl DigitalPosition {
 struct WootingPosition {
     pub buffer: [u32; BUFFER_SIZE as usize],
     avg: u32,
-    buffer_pos: u16,
+    buffer_pos: usize,
     release_point: u32,
     actuation_point: u32,
     tolerance: u32,
@@ -89,17 +128,17 @@ struct WootingPosition {
 }
 
 impl WootingPosition {
-    pub fn new(lowest_point: u32, highest_point: u32) -> Self {
-        let dif = (highest_point - lowest_point) as f32;
+    pub const fn default() -> Self {
+        let dif = (DEFAULT_HIGH - DEFAULT_LOW) as f32;
         Self {
-            buffer: [highest_point; BUFFER_SIZE as usize],
-            avg: (highest_point),
+            buffer: [0; BUFFER_SIZE as usize],
+            avg: 0,
             buffer_pos: 0,
-            release_point: (highest_point - (DEFAULT_RELEASE_SCALE * dif) as u32),
-            actuation_point: (highest_point - (DEFAULT_ACTUATE_SCALE * dif) as u32),
+            release_point: (DEFAULT_HIGH - (DEFAULT_RELEASE_SCALE * dif) as u32),
+            actuation_point: (DEFAULT_HIGH - (DEFAULT_ACTUATE_SCALE * dif) as u32),
             tolerance: (dif * TOLERANCE_SCALE) as u32,
-            lowest_point,
-            highest_point,
+            lowest_point: DEFAULT_LOW,
+            highest_point: DEFAULT_HIGH,
             is_pressed: false,
             wooting: false,
         }
@@ -117,6 +156,12 @@ impl WootingPosition {
             self.avg = avg;
             self.wooting = false;
             self.is_pressed = false;
+            self.calibrate(avg);
+        } else if avg < self.lowest_point + 200 {
+            self.avg = avg;
+            self.wooting = true;
+            self.is_pressed = true;
+            self.calibrate(avg);
         } else if avg < self.avg - self.tolerance || (avg <= self.actuation_point && !self.wooting)
         {
             self.avg = avg;
@@ -125,6 +170,40 @@ impl WootingPosition {
         } else if avg > self.avg + self.tolerance {
             self.avg = avg;
             self.is_pressed = false;
+        }
+    }
+
+    fn calibrate(&mut self, buf: u32) {
+        let mut changed = false;
+        if self.highest_point < buf {
+            self.highest_point = buf;
+            changed = true;
+        } else if self.lowest_point > buf {
+            self.lowest_point = buf;
+            changed = true;
+        }
+
+        if changed {
+            let dif = (self.highest_point - self.lowest_point) as f32;
+            self.release_point = self.highest_point - (DEFAULT_RELEASE_SCALE * dif) as u32;
+            self.actuation_point = self.highest_point - (DEFAULT_ACTUATE_SCALE * dif) as u32;
+            self.tolerance = (dif as f32 * TOLERANCE_SCALE) as u32;
+        }
+    }
+
+    fn setup(&mut self, reading: u16) -> bool {
+        if self.buffer[0] == 0 || self.buffer_pos != 0 {
+            self.buffer[self.buffer_pos] = reading as u32;
+            self.buffer_pos = (self.buffer_pos + 1) % BUFFER_SIZE as usize;
+            false
+        } else {
+            let mut buf = 0;
+            for num in self.buffer {
+                buf += num;
+            }
+            let avg = buf / BUFFER_SIZE as u32;
+            self.calibrate(avg);
+            true
         }
     }
 
@@ -137,7 +216,7 @@ impl WootingPosition {
         for buf in self.buffer {
             sum += buf as u16;
         }
-        sum / BUFFER_SIZE
+        sum / BUFFER_SIZE as u16
     }
 }
 
@@ -160,19 +239,11 @@ impl Position {
 
     /// Updates the buf of the key. Updating the buf will also update
     /// the value returned from the is_pressed function
-    fn update_buf(&mut self, buf: u16, reverse: bool) {
-        if reverse {
-            match self {
-                Position::Digital(pos) => pos.update_buf(4095 - buf),
-                Position::Wooting(pos) => pos.update_buf(4095 - buf),
-                Position::Slave(pos) => *pos = buf as u8,
-            }
-        } else {
-            match self {
-                Position::Digital(pos) => pos.update_buf(buf),
-                Position::Wooting(pos) => pos.update_buf(buf),
-                Position::Slave(pos) => *pos = buf as u8,
-            }
+    fn update_buf(&mut self, buf: u16) {
+        match self {
+            Position::Digital(pos) => pos.update_buf(buf),
+            Position::Wooting(pos) => pos.update_buf(buf),
+            Position::Slave(pos) => *pos = buf as u8,
         }
     }
 
@@ -182,6 +253,30 @@ impl Position {
             Position::Digital(pos) => pos.get_buf(),
             Position::Wooting(pos) => pos.get_buf(),
             Position::Slave(pos) => *pos as u16,
+        }
+    }
+
+    fn setup(&mut self, buf: u16) -> bool {
+        match self {
+            Position::Slave(_) => true,
+            Position::Digital(pos) => pos.setup(buf),
+            Position::Wooting(pos) => pos.setup(buf),
+        }
+    }
+
+    fn get_highest(&self) -> u32 {
+        match self {
+            Position::Digital(pos) => pos.highest_point,
+            Position::Wooting(pos) => pos.highest_point,
+            _ => 0,
+        }
+    }
+
+    fn get_lowest(&self) -> u32 {
+        match self {
+            Position::Digital(pos) => pos.lowest_point,
+            Position::Wooting(pos) => pos.lowest_point,
+            _ => 0,
         }
     }
 }
@@ -427,7 +522,8 @@ pub enum ScanCodeBehavior<const S: usize> {
     IntervalPresses(IntervalPresses),
     ModTap(ModTap),
     ModCombo(ModCombo),
-    Function(fn(&mut Keys<S>)),
+    Config(fn(&mut Keys<S>)),
+    Function(fn()),
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -439,9 +535,9 @@ struct Key<const S: usize> {
 }
 
 impl<const S: usize> Key<S> {
-    fn default() -> Self {
+    const fn default() -> Self {
         Self {
-            pos: Position::Digital(DigitalPosition::new(1300, 1900)),
+            pos: Position::Digital(DigitalPosition::default()),
             codes: [ScanCodeBehavior::Single(ScanCode::Letter(0)); NUM_LAYERS],
             current_layer: None,
             reverse: true,
@@ -459,11 +555,11 @@ impl<const S: usize> Key<S> {
     }
 
     fn set_digital(&mut self) {
-        self.pos = Position::Digital(DigitalPosition::new(1400, 2000));
+        self.pos = Position::Digital(DigitalPosition::default());
     }
 
     fn set_wooting(&mut self) {
-        self.pos = Position::Wooting(WootingPosition::new(1400, 2000));
+        self.pos = Position::Wooting(WootingPosition::default());
     }
 
     fn set_slave(&mut self) {
@@ -471,7 +567,7 @@ impl<const S: usize> Key<S> {
     }
 
     fn update_buf(&mut self, buf: u16) {
-        self.pos.update_buf(buf, self.reverse);
+        self.pos.update_buf(buf);
     }
 
     /// Pushes the scan code into the provided index set depending on the Key's position
@@ -499,10 +595,36 @@ enum PressResult {
 }
 impl<const S: usize> Keys<S> {
     /// Returns a Keys struct
-    pub fn default() -> Self {
+    pub const fn default() -> Self {
         Self {
             keys: [Key::default(); S],
         }
+    }
+
+    pub fn get_pressed(&self, index: usize) -> bool {
+        self.keys[index].pos.is_pressed()
+    }
+
+    pub fn get_highest(&self, index: usize) -> u32 {
+        self.keys[index].pos.get_highest()
+    }
+
+    pub fn get_lowest(&self, index: usize) -> u32 {
+        self.keys[index].pos.get_lowest()
+    }
+
+    // flips reading if key reverse state is true
+    fn get_reading(&mut self, index: usize, reading: u16) -> u16 {
+        if self.keys[index].reverse {
+            4095 - reading
+        } else {
+            reading
+        }
+    }
+
+    pub fn setup(&mut self, index: usize, buf: u16) -> bool {
+        let reading = self.get_reading(index, buf);
+        self.keys[index].pos.setup(reading)
     }
 
     /// Sets the code on the passed in layer on the indexed key. Returns
@@ -588,6 +710,7 @@ impl<const S: usize> Keys<S> {
     pub fn set_slave(&mut self, range: Range<u8>) {
         for i in range {
             self.keys[i as usize].set_slave();
+            self.keys[i as usize].reverse = false;
         }
     }
 
@@ -595,13 +718,18 @@ impl<const S: usize> Keys<S> {
         self.keys[index].reverse = val;
     }
 
-    pub fn set_function(&mut self, f: fn(&mut Keys<S>), index: usize, layer: usize) {
+    pub fn set_config(&mut self, f: fn(&mut Keys<S>), index: usize, layer: usize) {
+        self.keys[index].codes[layer] = ScanCodeBehavior::Config(f);
+    }
+
+    pub fn set_function(&mut self, f: fn(), index: usize, layer: usize) {
         self.keys[index].codes[layer] = ScanCodeBehavior::Function(f);
     }
 
     /// Updates the indexed key with the provided reading
     pub fn update_buf(&mut self, index: usize, reading: u16) {
-        self.keys[index].update_buf(reading);
+        let res = self.get_reading(index, reading);
+        self.keys[index].update_buf(res);
     }
 
     /// Gets the average buf of the indexed key
@@ -750,9 +878,17 @@ impl<const S: usize> Keys<S> {
                     None => PressResult::None,
                 }
             }
+            ScanCodeBehavior::Config(f) => {
+                if pressed {
+                    f(self);
+                    PressResult::Function
+                } else {
+                    PressResult::None
+                }
+            }
             ScanCodeBehavior::Function(f) => {
                 if pressed {
-                    (f)(self);
+                    f();
                     PressResult::Function
                 } else {
                     PressResult::None

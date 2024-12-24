@@ -1,3 +1,4 @@
+use embassy_rp::rom_data::reset_to_usb_boot;
 use embassy_time::Duration;
 
 use crate::{codes::KeyCodes, keys::Keys};
@@ -336,7 +337,7 @@ pub fn load_key_config<const S: usize>(keys: &mut Keys<S>) {
     keys.set_code(KeyCodes::KeyboardF8, 23, 2);
     keys.set_code(KeyCodes::KeyboardF9, 24, 2);
     keys.set_code(KeyCodes::KeyboardF10, 25, 2);
-    keys.set_function(load_callum, 26, 2);
+    keys.set_config(load_callum, 26, 2);
 
     keys.set_code(KeyCodes::KeyboardLeftArrow, 27, 2);
     keys.set_code(KeyCodes::KeyboardDownArrow, 28, 2);
@@ -492,25 +493,28 @@ pub fn load_key_config<const S: usize>(keys: &mut Keys<S>) {
 pub fn load_callum<const S: usize>(keys: &mut Keys<S>) {
     *keys = Keys::<S>::default();
     // Layer 0
+    keys.set_code(KeyCodes::KeyboardEscape, 0, 0);
     keys.set_code(KeyCodes::KeyboardQq, 1, 0);
     keys.set_code(KeyCodes::KeyboardWw, 2, 0);
     keys.set_code(KeyCodes::KeyboardEe, 3, 0);
     keys.set_code(KeyCodes::KeyboardRr, 4, 0);
     keys.set_code(KeyCodes::KeyboardTt, 5, 0);
 
+    keys.set_code(KeyCodes::KeyboardLeftControl, 6, 0);
     keys.set_code(KeyCodes::KeyboardAa, 7, 0);
     keys.set_code(KeyCodes::KeyboardSs, 8, 0);
     keys.set_code(KeyCodes::KeyboardDd, 9, 0);
     keys.set_code(KeyCodes::KeyboardFf, 10, 0);
     keys.set_code(KeyCodes::KeyboardGg, 11, 0);
 
+    keys.set_code(KeyCodes::KeyboardLeftShift, 12, 0);
     keys.set_code(KeyCodes::KeyboardZz, 13, 0);
     keys.set_code(KeyCodes::KeyboardXx, 14, 0);
     keys.set_code(KeyCodes::KeyboardCc, 15, 0);
     keys.set_code(KeyCodes::KeyboardVv, 16, 0);
     keys.set_code(KeyCodes::KeyboardBb, 17, 0);
 
-    keys.set_code(KeyCodes::KeyboardLeftGUI, 18, 0);
+    keys.set_code(KeyCodes::Layer4, 18, 0);
     keys.set_combined(KeyCodes::Layer1, KeyCodes::Layer3, 40, 19, 0);
     keys.set_code(KeyCodes::KeyboardSpacebar, 20, 0);
 
@@ -537,6 +541,7 @@ pub fn load_callum<const S: usize>(keys: &mut Keys<S>) {
     keys.set_code(KeyCodes::KeyboardRightControl, 41, 0);
 
     // Layer 1
+    keys.set_config(bios_config, 0, 1);
     keys.set_code(KeyCodes::KeyboardTab, 1, 1);
     // keys.set_code(KeyCodes::KeyboardWw, 2, 1);
     // keys.set_code(KeyCodes::KeyboardEe, 3, 1);
@@ -770,10 +775,76 @@ pub fn load_callum<const S: usize>(keys: &mut Keys<S>) {
     keys.set_code(KeyCodes::KeyboardF8, 35, 3);
     keys.set_code(KeyCodes::KeyboardF9, 36, 3);
     keys.set_code(KeyCodes::KeyboardF10, 37, 3);
-    keys.set_function(load_key_config, 38, 3);
+    keys.set_config(load_key_config, 38, 3);
 
     keys.set_code(KeyCodes::KeyboardLeftShift, 39, 3);
     keys.set_combined(KeyCodes::Layer2, KeyCodes::Layer3, 19, 40, 3);
+
+    keys.set_code(KeyCodes::KeyboardTab, 1, 4);
+
+    keys.set_code(KeyCodes::KeyboardLeftGUI, 6, 4);
+    keys.set_code(KeyCodes::Keyboard1Exclamation, 7, 4);
+    keys.set_code(KeyCodes::Keyboard2At, 8, 4);
+    keys.set_code(KeyCodes::Keyboard3Hash, 9, 4);
+    keys.set_code(KeyCodes::Keyboard4Dollar, 10, 4);
+    keys.set_code(KeyCodes::Keyboard5Percent, 11, 4);
+
+    keys.set_code(KeyCodes::KeyboardLeftShift, 12, 4);
+
+    keys.set_slave(21..42);
+    keys.set_reverse(false, 0);
+    keys.set_reverse(false, 6);
+    keys.set_reverse(false, 12);
+}
+
+pub fn bios_config<const S: usize>(keys: &mut Keys<S>) {
+    *keys = Keys::<S>::default();
+    keys.set_code(KeyCodes::KeyboardEscape, 0, 0);
+    keys.set_code(KeyCodes::KeyboardQq, 1, 0);
+    keys.set_code(KeyCodes::KeyboardWw, 2, 0);
+    keys.set_code(KeyCodes::KeyboardUpArrow, 3, 0);
+    keys.set_code(KeyCodes::KeyboardRr, 4, 0);
+    keys.set_code(KeyCodes::KeyboardTt, 5, 0);
+
+    keys.set_code(KeyCodes::KeyboardAa, 7, 0);
+    keys.set_code(KeyCodes::KeyboardLeftArrow, 8, 0);
+    keys.set_code(KeyCodes::KeyboardDownArrow, 9, 0);
+    keys.set_code(KeyCodes::KeyboardRightArrow, 10, 0);
+    keys.set_code(KeyCodes::KeyboardGg, 11, 0);
+
+    keys.set_config(load_callum, 13, 0);
+    keys.set_function(
+        || {
+            reset_to_usb_boot(0, 0);
+        },
+        14,
+        0,
+    );
+    keys.set_code(KeyCodes::KeyboardCc, 15, 0);
+    keys.set_code(KeyCodes::KeyboardTab, 16, 0);
+    keys.set_code(KeyCodes::KeyboardEnter, 17, 0);
+
+    keys.set_code(KeyCodes::KeyboardBackspace, 18, 0);
+    keys.set_code(KeyCodes::Layer1, 19, 0);
+    keys.set_code(KeyCodes::KeyboardSpacebar, 20, 0);
+
+    keys.set_code(KeyCodes::KeyboardF1, 1, 1);
+    keys.set_code(KeyCodes::KeyboardF2, 2, 1);
+    keys.set_code(KeyCodes::KeyboardF3, 3, 1);
+    keys.set_code(KeyCodes::KeyboardF4, 4, 1);
+    keys.set_code(KeyCodes::KeyboardF5, 5, 1);
+
+    keys.set_code(KeyCodes::Layer1, 6, 1);
+    keys.set_code(KeyCodes::KeyboardF6, 7, 1);
+    keys.set_code(KeyCodes::KeyboardF7, 8, 1);
+    keys.set_code(KeyCodes::KeyboardF8, 9, 1);
+    keys.set_code(KeyCodes::KeyboardF9, 10, 1);
+    keys.set_code(KeyCodes::KeyboardF10, 11, 1);
+
+    keys.set_code(KeyCodes::KeyboardF11, 13, 1);
+    keys.set_code(KeyCodes::KeyboardF12, 14, 1);
+
+    // Layer 4
 
     keys.set_slave(21..42);
     keys.set_reverse(false, 0);

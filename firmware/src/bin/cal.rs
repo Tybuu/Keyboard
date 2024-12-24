@@ -77,8 +77,8 @@ async fn main(_spawner: Spawner) {
 
     let mut setup = false;
     while !setup {
-        let mut pos = 0;
         setup = true;
+        let mut pos = 0;
         for i in order {
             // Equivalent to pos % 4
             let chan = pos & 0b11;
@@ -98,11 +98,6 @@ async fn main(_spawner: Spawner) {
         }
     }
     loop {
-        let mut slave_keys = [0u8; 3];
-        // {
-        //     let shared = MUX.lock().await;
-        //     slave_keys = *shared;
-        // }
         let mut pos = 0;
         // Left Keyboard Scan
         for i in order {
@@ -121,81 +116,12 @@ async fn main(_spawner: Spawner) {
             }
             pos += 1;
         }
-        // Right Keyboard Scan
-        for i in 0..21 {
-            // equivalent to i / 8
-            let a_idx = (i >> 3) as usize;
-            // equivalent to i % 8
-            let b_idx = i & 0b111;
-            let val = (slave_keys[a_idx] >> b_idx) & 1;
-            keys.update_buf(i + 21, val as u16);
-        }
-        let (key_report, m_report) = report.generate_report(&mut keys);
         log::info!(
-            "[[{}, {}, {}, {}], [{}, {}, {}, {}], [{}, {}, {}, {}], [{}, {}, {}, {}], [{}, {}, {}, {}], [{}, {}, {}, {}]",
-            keys.get_buf(0), keys.get_pressed(0), keys.get_lowest(0),
+            "Key 0 | Buf: {} | Highest: {} | Lowest: {}",
+            keys.get_buf(0),
             keys.get_highest(0),
-            keys.get_buf(1), keys.get_pressed(1), keys.get_lowest(1),
-            keys.get_highest(1),
-            keys.get_buf(2), keys.get_pressed(2), keys.get_lowest(2),
-            keys.get_highest(2),
-            keys.get_buf(3), keys.get_pressed(3), keys.get_lowest(3),
-            keys.get_highest(3),
-            keys.get_buf(4), keys.get_pressed(4), keys.get_lowest(4),
-            keys.get_highest(4),
-            keys.get_buf(5), keys.get_pressed(5), keys.get_lowest(5),
-            keys.get_highest(5),
+            keys.get_lowest(0)
         );
-
-        log::info!(
-            "[{}, {}, {}, {}], [{}, {}, {}, {}], [{}, {}, {}, {}], [{}, {}, {}, {}], [{}, {}, {}, {}], [{}, {}, {}, {}]",
-            keys.get_buf(6), keys.get_pressed(6), keys.get_lowest(6),
-            keys.get_highest(6),
-            keys.get_buf(7), keys.get_pressed(7), keys.get_lowest(7),
-            keys.get_highest(7),
-            keys.get_buf(8), keys.get_pressed(8), keys.get_lowest(8),
-            keys.get_highest(8),
-            keys.get_buf(9), keys.get_pressed(9), keys.get_lowest(9),
-            keys.get_highest(9),
-            keys.get_buf(10), keys.get_pressed(10), keys.get_lowest(10),
-            keys.get_highest(10),
-            keys.get_buf(11), keys.get_pressed(11), keys.get_lowest(11),
-            keys.get_highest(11),
-        );
-
-        log::info!(
-            "[{}, {}, {}, {}], [{}, {}, {}, {}], [{}, {}, {}, {}], [{}, {}, {}, {}], [{}, {}, {}, {}], [{}, {}, {}, {}]",
-            keys.get_buf(12), keys.get_pressed(12), keys.get_lowest(12),
-            keys.get_highest(12),
-            keys.get_buf(13), keys.get_pressed(13), keys.get_lowest(13),
-            keys.get_highest(13),
-            keys.get_buf(14), keys.get_pressed(14), keys.get_lowest(14),
-            keys.get_highest(14),
-            keys.get_buf(15), keys.get_pressed(15), keys.get_lowest(15),
-            keys.get_highest(15),
-            keys.get_buf(16), keys.get_pressed(16), keys.get_lowest(16),
-            keys.get_highest(16),
-            keys.get_buf(17), keys.get_pressed(17), keys.get_lowest(17),
-            keys.get_highest(17),
-        );
-
-        log::info!(
-            "[{}, {}, {}, {}], [{}, {}, {}, {}], [{}, {}, {}, {}]]",
-            keys.get_buf(18),
-            keys.get_pressed(18),
-            keys.get_lowest(18),
-            keys.get_highest(18),
-            keys.get_buf(19),
-            keys.get_pressed(19),
-            keys.get_lowest(19),
-            keys.get_highest(19),
-            keys.get_buf(20),
-            keys.get_pressed(20),
-            keys.get_lowest(20),
-            keys.get_highest(20),
-        );
-        let size = size_of::<Keys<21>>();
-        log::info!("Size: {}", size);
         Timer::after_millis(20).await;
     }
 }

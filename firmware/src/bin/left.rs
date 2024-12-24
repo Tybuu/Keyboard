@@ -9,15 +9,17 @@ use core::sync::atomic::{AtomicBool, Ordering};
 
 use defmt::info;
 use embassy_executor::Spawner;
-use embassy_futures::join::join3;
+use embassy_futures::join::{join, join4};
+use embassy_futures::yield_now;
 use embassy_rp::adc::{self, Adc, Channel, Config as AdcConfig};
 use embassy_rp::gpio::{Pin, Pull};
 use embassy_rp::{bind_interrupts, gpio, peripherals, usb};
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::mutex::Mutex;
+use embassy_sync::signal::Signal;
 use embassy_time::Timer;
 use keyboard::descriptor::{BufferReport, KeyboardReportNKRO, MouseReport};
-use keyboard::key_config::{load_callum, load_key_config, load_trial};
+use keyboard::key_config::load_callum;
 use keyboard::keys::Keys;
 
 use embassy_rp::usb::Driver;
@@ -33,7 +35,11 @@ bind_interrupts!(struct Irqs {
     ADC_IRQ_FIFO => adc::InterruptHandler;
 });
 
-static MUX: Mutex<CriticalSectionRawMutex, [u8; 3]> = Mutex::new([0u8; 3]);
+static MUX: Mutex<ThreadModeRawMutex, [u8; 3]> = Mutex::new([0u8; 3]);
+
+static KEYS: Mutex<ThreadModeRawMutex, Keys<NUM_KEYS>> = Mutex::new(Keys::<NUM_KEYS>::default());
+
+static SIGNAL: Signal<ThreadModeRawMutex, bool> = Signal::new();
 
 pub const NUM_KEYS: usize = 42;
 #[embassy_executor::main]
@@ -133,10 +139,34 @@ async fn main(_spawner: Spawner) {
     ];
     find_order(&mut order);
 
-    let mut keys = Keys::<NUM_KEYS>::default();
+    let mut keys = KEYS.lock().await;
     load_callum(&mut keys);
 
     let mut report = Report::default();
+
+    let mut setup = false;
+    while !setup {
+        let mut pos = 0;
+        setup = true;
+        for i in order {
+            // Equivalent to pos % 4
+            let chan = pos & 0b11;
+            if chan == 0 {
+                // equivalent to pos / 4
+                change_sel(&mut sel0, &mut sel1, &mut sel2, pos >> 2);
+            }
+            let res = match chan {
+                0 => keys.setup(i, adc.read(&mut a0).await.unwrap()),
+                1 => keys.setup(i, adc.read(&mut a1).await.unwrap()),
+                2 => keys.setup(i, adc.read(&mut a2).await.unwrap()),
+                3 => keys.setup(i, adc.read(&mut a3).await.unwrap()),
+                _ => false,
+            };
+            setup = setup && res;
+            pos += 1;
+        }
+    }
+    drop(keys);
 
     // Main keyboard loop
     let usb_key_in = async {
@@ -146,6 +176,7 @@ async fn main(_spawner: Spawner) {
                 let shared = MUX.lock().await;
                 slave_keys = *shared;
             }
+            let mut keys = KEYS.lock().await;
             let mut pos = 0;
             // Left Keyboard Scan
             for i in order {
@@ -170,19 +201,27 @@ async fn main(_spawner: Spawner) {
                 let val = (slave_keys[a_idx] >> b_idx) & 1;
                 keys.update_buf(i + 21, val as u16);
             }
-            let (key_report, m_report) = report.generate_report(&mut keys);
-            match key_report {
-                Some(report) => {
-                    key_writer.write_serialize(report).await.unwrap();
+            match report.generate_report(&mut keys) {
+                (Some(k_rep), Some(m_rep)) => {
+                    join(
+                        key_writer.write_serialize(k_rep),
+                        mouse_writer.write_serialize(m_rep),
+                    )
+                    .await;
                 }
-                None => {}
+                (Some(k_rep), None) => key_writer.write_serialize(k_rep).await.unwrap(),
+                (None, Some(m_rep)) => mouse_writer.write_serialize(m_rep).await.unwrap(),
+                _ => {}
+            };
+            if SIGNAL.signaled() {
+                let bytes = keys.get_buf(0).to_le_bytes();
+                let mut rep = BufferReport::default();
+                rep.input[0] = bytes[0];
+                rep.input[1] = bytes[1];
+                c_writer.write_serialize(&rep).await.unwrap();
+                SIGNAL.reset();
             }
-            match m_report {
-                Some(report) => {
-                    mouse_writer.write_serialize(report).await.unwrap();
-                }
-                None => {}
-            }
+            drop(keys);
         }
     };
 
@@ -199,7 +238,18 @@ async fn main(_spawner: Spawner) {
             }
         }
     };
-    join3(usb_key_in, usb_fut, buffer_out).await;
+
+    let com_in = async {
+        loop {
+            while SIGNAL.signaled() {
+                yield_now().await;
+            }
+            let mut buf = [0u8; 32];
+            c_reader.read(&mut buf).await.unwrap();
+            SIGNAL.signal(true);
+        }
+    };
+    join4(usb_key_in, usb_fut, buffer_out, com_in).await;
 }
 
 struct MyDeviceHandler {

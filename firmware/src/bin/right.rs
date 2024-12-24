@@ -127,6 +127,28 @@ async fn main(_spawner: Spawner) {
     keys.set_reverse(false, 11);
     keys.set_reverse(false, 17);
 
+    let mut setup = false;
+    while !setup {
+        let mut pos = 0;
+        setup = true;
+        for i in order {
+            // Equivalent to pos % 4
+            let chan = pos & 0b11;
+            if chan == 0 {
+                // equivalent to pos / 4
+                change_sel(&mut sel0, &mut sel1, &mut sel2, pos >> 2);
+            }
+            let res = match chan {
+                0 => keys.setup(i, adc.read(&mut a0).await.unwrap()),
+                1 => keys.setup(i, adc.read(&mut a1).await.unwrap()),
+                2 => keys.setup(i, adc.read(&mut a2).await.unwrap()),
+                3 => keys.setup(i, adc.read(&mut a3).await.unwrap()),
+                _ => false,
+            };
+            setup = setup && res;
+            pos += 1;
+        }
+    }
     let mut report = SlaveKeyReport::default();
 
     // Main keyboard loop
