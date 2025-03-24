@@ -97,10 +97,12 @@ impl Report {
             self.key_report = new_key_report;
             returned_report.0 = Some(&self.key_report);
         }
-        // Second bool condtion is needed as the mouse report is relative.
-        // If a key is held, we need to constantly send reports to represent
-        // that state to the host
-        if self.mouse_report != new_mouse_report || new_mouse_report != MouseReport::default() {
+
+        if self.mouse_report.buttons != new_mouse_report.buttons
+            || new_mouse_report.x != 0
+            || new_mouse_report.y != 0
+            || new_mouse_report.wheel != 0
+        {
             self.mouse_report = new_mouse_report;
             returned_report.1 = Some(&self.mouse_report);
         }

@@ -26,7 +26,6 @@ use embassy_usb::class::hid::{HidReaderWriter, HidWriter, State};
 use embassy_usb::{Builder, Config, Handler};
 use gpio::{Level, Output};
 use keyboard::report::Report;
-use log::logger;
 use usbd_hid::descriptor::SerializedDescriptor;
 use {defmt_rtt as _, panic_probe as _};
 

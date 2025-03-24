@@ -157,7 +157,7 @@ impl WootingPosition {
             self.wooting = false;
             self.is_pressed = false;
             self.calibrate(avg);
-        } else if avg < self.lowest_point + 200 {
+        } else if avg < self.lowest_point {
             self.avg = avg;
             self.wooting = true;
             self.is_pressed = true;
@@ -537,10 +537,10 @@ struct Key<const S: usize> {
 impl<const S: usize> Key<S> {
     const fn default() -> Self {
         Self {
-            pos: Position::Digital(DigitalPosition::default()),
+            pos: Position::Wooting(WootingPosition::default()),
             codes: [ScanCodeBehavior::Single(ScanCode::Letter(0)); NUM_LAYERS],
             current_layer: None,
-            reverse: true,
+            reverse: false,
         }
     }
 

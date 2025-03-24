@@ -19,7 +19,7 @@ use embassy_sync::mutex::Mutex;
 use embassy_sync::signal::Signal;
 use embassy_time::Timer;
 use keyboard::descriptor::{BufferReport, KeyboardReportNKRO, MouseReport};
-use keyboard::key_config::load_callum;
+use keyboard::key_config::{load_callum, load_new_layout};
 use keyboard::keys::Keys;
 
 use embassy_rp::usb::Driver;
@@ -140,7 +140,7 @@ async fn main(_spawner: Spawner) {
     find_order(&mut order);
 
     let mut keys = KEYS.lock().await;
-    load_callum(&mut keys);
+    load_new_layout(&mut keys);
 
     let mut report = Report::default();
 
