@@ -182,7 +182,7 @@ pub fn load_key_config<const S: usize>(keys: &mut Keys<S>) {
     keys.set_code(KeyCodes::KeyboardF8, 23, 2);
     keys.set_code(KeyCodes::KeyboardF9, 24, 2);
     keys.set_code(KeyCodes::KeyboardF10, 25, 2);
-    keys.set_config(load_callum, 26, 2);
+    keys.set_config(load_colemak, 26, 2);
 
     keys.set_code(KeyCodes::KeyboardLeftArrow, 27, 2);
     keys.set_code(KeyCodes::KeyboardDownArrow, 28, 2);
@@ -625,16 +625,19 @@ pub fn load_callum<const S: usize>(keys: &mut Keys<S>) {
     keys.set_code(KeyCodes::KeyboardLeftShift, 39, 3);
     keys.set_combined(KeyCodes::Layer2, KeyCodes::Layer3, 19, 40, 3);
 
-    keys.set_code(KeyCodes::KeyboardTab, 1, 4);
+    keys.set_code(KeyCodes::Keyboard1Exclamation, 2, 4);
+    keys.set_code(KeyCodes::Keyboard2At, 2, 4);
+    keys.set_code(KeyCodes::Keyboard3Hash, 3, 4);
 
     keys.set_code(KeyCodes::KeyboardLeftGUI, 6, 4);
-    keys.set_code(KeyCodes::Keyboard1Exclamation, 7, 4);
-    keys.set_code(KeyCodes::Keyboard2At, 8, 4);
-    keys.set_code(KeyCodes::Keyboard3Hash, 9, 4);
-    keys.set_code(KeyCodes::Keyboard4Dollar, 10, 4);
-    keys.set_code(KeyCodes::Keyboard5Percent, 11, 4);
+    keys.set_code(KeyCodes::Keyboard4Dollar, 8, 4);
+    keys.set_code(KeyCodes::Keyboard5Percent, 9, 4);
+    keys.set_code(KeyCodes::Keyboard6Caret, 10, 4);
 
     keys.set_code(KeyCodes::KeyboardLeftShift, 12, 4);
+    keys.set_code(KeyCodes::Keyboard7Ampersand, 14, 4);
+    keys.set_code(KeyCodes::Keyboard8Asterisk, 15, 4);
+    keys.set_code(KeyCodes::Keyboard9OpenParens, 16, 4);
 
     keys.set_slave(21..42);
     keys.set_reverse(false, 0);
@@ -657,7 +660,7 @@ pub fn bios_config<const S: usize>(keys: &mut Keys<S>) {
     keys.set_code(KeyCodes::KeyboardRightArrow, 10, 0);
     keys.set_code(KeyCodes::KeyboardGg, 11, 0);
 
-    keys.set_config(load_callum, 13, 0);
+    keys.set_config(load_colemak, 13, 0);
     keys.set_function(
         || {
             reset_to_usb_boot(0, 0);
@@ -697,7 +700,7 @@ pub fn bios_config<const S: usize>(keys: &mut Keys<S>) {
     keys.set_reverse(false, 12);
 }
 
-pub fn load_new_layout<const S: usize>(keys: &mut Keys<S>) {
+pub fn load_colemak<const S: usize>(keys: &mut Keys<S>) {
     *keys = Keys::<S>::default();
     // Layer 0
     keys.set_code(KeyCodes::KeyboardEscape, 0, 0);
@@ -987,16 +990,20 @@ pub fn load_new_layout<const S: usize>(keys: &mut Keys<S>) {
     keys.set_code(KeyCodes::KeyboardLeftShift, 39, 3);
     keys.set_combined(KeyCodes::Layer2, KeyCodes::Layer3, 19, 40, 3);
 
-    keys.set_code(KeyCodes::KeyboardTab, 1, 4);
+    keys.set_code(KeyCodes::Keyboard1Exclamation, 3, 4);
+    keys.set_code(KeyCodes::Keyboard4Dollar, 4, 4);
+    keys.set_code(KeyCodes::Keyboard7Ampersand, 5, 4);
 
     keys.set_code(KeyCodes::KeyboardLeftGUI, 6, 4);
-    keys.set_code(KeyCodes::Keyboard1Exclamation, 7, 4);
-    keys.set_code(KeyCodes::Keyboard2At, 8, 4);
-    keys.set_code(KeyCodes::Keyboard3Hash, 9, 4);
-    keys.set_code(KeyCodes::Keyboard4Dollar, 10, 4);
-    keys.set_code(KeyCodes::Keyboard5Percent, 11, 4);
+    keys.set_code(KeyCodes::Keyboard2At, 9, 4);
+    keys.set_code(KeyCodes::Keyboard5Percent, 10, 4);
+    keys.set_code(KeyCodes::Keyboard8Asterisk, 11, 4);
 
     keys.set_code(KeyCodes::KeyboardLeftShift, 12, 4);
+    keys.set_code(KeyCodes::Keyboard0CloseParens, 14, 4);
+    keys.set_code(KeyCodes::Keyboard3Hash, 15, 4);
+    keys.set_code(KeyCodes::Keyboard6Caret, 16, 4);
+    keys.set_code(KeyCodes::Keyboard9OpenParens, 17, 4);
 
     keys.set_slave(21..42);
     keys.set_reverse(false, 0);

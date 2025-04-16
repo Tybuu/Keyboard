@@ -12,14 +12,14 @@ use embassy_executor::Spawner;
 use embassy_futures::join::{join, join4};
 use embassy_futures::yield_now;
 use embassy_rp::adc::{self, Adc, Channel, Config as AdcConfig};
-use embassy_rp::gpio::{Pin, Pull};
+use embassy_rp::gpio::Pull;
 use embassy_rp::{bind_interrupts, gpio, peripherals, usb};
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_sync::signal::Signal;
 use embassy_time::Timer;
 use keyboard::descriptor::{BufferReport, KeyboardReportNKRO, MouseReport};
-use keyboard::key_config::{load_callum, load_new_layout};
+use keyboard::key_config::load_colemak;
 use keyboard::keys::Keys;
 
 use embassy_rp::usb::Driver;
@@ -140,7 +140,7 @@ async fn main(_spawner: Spawner) {
     find_order(&mut order);
 
     let mut keys = KEYS.lock().await;
-    load_new_layout(&mut keys);
+    load_colemak(&mut keys);
 
     let mut report = Report::default();
 
@@ -309,12 +309,7 @@ fn find_order(ary: &mut [usize]) {
 }
 
 /// Change the sel pins to represent the state represented in num
-fn change_sel<P0: Pin, P1: Pin, P2: Pin>(
-    sel0: &mut Output<P0>,
-    sel1: &mut Output<P1>,
-    sel2: &mut Output<P2>,
-    num: u8,
-) {
+fn change_sel(sel0: &mut Output, sel1: &mut Output, sel2: &mut Output, num: u8) {
     match num {
         0 => {
             sel0.set_low();
