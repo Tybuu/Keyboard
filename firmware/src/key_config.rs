@@ -691,6 +691,9 @@ pub fn bios_config<const S: usize>(keys: &mut Keys<S>) {
 
     keys.set_code(KeyCodes::KeyboardF11, 13, 1);
     keys.set_code(KeyCodes::KeyboardF12, 14, 1);
+    keys.set_code(KeyCodes::KeyboardLeftControl, 15, 1);
+    keys.set_code(KeyCodes::KeyboardLeftAlt, 16, 1);
+    keys.set_code(KeyCodes::KeyboardDelete, 17, 1);
 
     // Layer 4
 

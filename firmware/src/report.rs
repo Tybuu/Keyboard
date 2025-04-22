@@ -15,11 +15,18 @@ fn set_bit(num: &mut u8, bit: u8, pos: u8) {
     }
 }
 
+enum State {
+    Stick(u8),
+    Pressed,
+    None,
+}
+
 pub struct Report {
     key_report: KeyboardReportNKRO,
     mouse_report: MouseReport,
     current_layer: usize,
     reset_layer: usize,
+    stick: State,
 }
 
 impl Report {
@@ -29,6 +36,7 @@ impl Report {
             mouse_report: MouseReport::default(),
             current_layer: 0,
             reset_layer: 0,
+            stick: State::None,
         }
     }
 
@@ -42,6 +50,8 @@ impl Report {
         let mut pressed_keys = Vec::<ScanCode, 64>::new();
         let mut new_key_report = KeyboardReportNKRO::default();
         let mut new_mouse_report = MouseReport::default();
+        let mut pressed = false;
+        let mut stick = false;
 
         keys.get_keys(self.current_layer, &mut pressed_keys);
         for key in &pressed_keys {
@@ -54,6 +64,7 @@ impl Report {
                     let n_idx = (code / 8) as usize;
                     let b_idx = code % 8;
                     set_bit(&mut new_key_report.nkro_keycodes[n_idx], 1, b_idx);
+                    pressed = true;
                 }
                 ScanCode::MouseButton(code) => {
                     let b_idx = code % 8;
@@ -78,9 +89,55 @@ impl Report {
                         new_layer = Some(layer);
                     }
                 },
+                ScanCode::Sticky => {
+                    stick = true;
+                }
                 ScanCode::None => {}
             };
         }
+        if stick {
+            if pressed {
+                match self.stick {
+                    State::Stick(_) => {
+                        self.stick = State::Pressed;
+                    }
+                    State::Pressed => {}
+                    State::None => {
+                        self.stick = State::Pressed;
+                    }
+                }
+            } else {
+                match self.stick {
+                    State::Stick(_) => {
+                        if new_key_report.modifier != 0 {
+                            self.stick = State::Stick(new_key_report.modifier)
+                        }
+                    }
+                    State::Pressed => {}
+                    State::None => {
+                        if new_key_report.modifier != 0 {
+                            self.stick = State::Stick(new_key_report.modifier)
+                        } else {
+                            self.stick = State::None;
+                        }
+                    }
+                }
+            }
+        } else {
+            match self.stick {
+                State::Stick(val) => {
+                    if pressed {
+                        new_key_report.modifier = val;
+                        self.stick = State::None;
+                    }
+                }
+                State::Pressed => {
+                    self.stick = State::None;
+                }
+                State::None => {}
+            }
+        }
+
         match new_layer {
             Some(layer) => {
                 if layer.toggle {

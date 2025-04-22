@@ -503,6 +503,7 @@ pub enum ScanCode {
     MouseY(i8),
     Layer(Layer),
     Scroll(i8),
+    Sticky,
     None,
 }
 
@@ -637,6 +638,21 @@ impl<const S: usize> Keys<S> {
     pub fn set_double(&mut self, code0: KeyCodes, code1: KeyCodes, index: usize, layer: usize) {
         self.keys[index].codes[layer] =
             ScanCodeBehavior::Double(code0.get_scan_code(), code1.get_scan_code());
+    }
+
+    pub fn set_triple(
+        &mut self,
+        code0: KeyCodes,
+        code1: KeyCodes,
+        code2: KeyCodes,
+        index: usize,
+        layer: usize,
+    ) {
+        self.keys[index].codes[layer] = ScanCodeBehavior::Triple(
+            code0.get_scan_code(),
+            code1.get_scan_code(),
+            code2.get_scan_code(),
+        );
     }
 
     /// Sets the indexed key to be a combined key. other_index is the other indexed key that needs
@@ -835,6 +851,7 @@ impl<const S: usize> Keys<S> {
                 combined_code: other_key_code,
             } => {
                 if pressed {
+                    set.push(ScanCode::Sticky);
                     if self.keys[*other_index].pos.is_pressed() {
                         set.push(*other_key_code).unwrap();
                         PressResult::Pressed
