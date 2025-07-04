@@ -5,6 +5,7 @@
 #![no_std]
 #![no_main]
 
+use core::ops::Deref;
 use core::sync::atomic::{AtomicBool, Ordering};
 
 use defmt::info;
@@ -12,12 +13,14 @@ use embassy_executor::Spawner;
 use embassy_futures::join::{join, join4};
 use embassy_futures::yield_now;
 use embassy_rp::adc::{self, Adc, Channel, Config as AdcConfig};
-use embassy_rp::gpio::Pull;
-use embassy_rp::{bind_interrupts, gpio, peripherals, usb};
+use embassy_rp::gpio::{AnyPin, Pin, Pull};
+use embassy_rp::pwm::{self, Pwm};
+use embassy_rp::{bind_interrupts, gpio, pac, peripherals, usb, Peripheral, PeripheralRef};
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_sync::signal::Signal;
 use embassy_time::Timer;
+use fixed::traits::LossyInto;
 use keyboard::descriptor::{BufferReport, KeyboardReportNKRO, MouseReport};
 use keyboard::key_config::load_colemak;
 use keyboard::keys::Keys;

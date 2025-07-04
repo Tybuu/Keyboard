@@ -21,9 +21,9 @@
         (pkgs.rust-bin.selectLatestNightlyWith (toolchain:
           toolchain.default.override {
             targets = ["thumbv6m-none-eabi"];
-            extensions = ["rust-src"];
+            extensions = ["rust-src" "rust-analyzer"];
           }))
-        pkgs.rust-analyzer
+        # pkgs.rust-analyzer
         pkgs.flip-link
         pkgs.probe-rs
         self.packages.x86_64-linux.elf2uf2-rs

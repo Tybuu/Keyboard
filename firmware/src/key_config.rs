@@ -756,15 +756,15 @@ pub fn load_colemak<const S: usize>(keys: &mut Keys<S>) {
     // Layer 1
     keys.set_config(bios_config, 0, 1);
     keys.set_code(KeyCodes::KeyboardTab, 1, 1);
-    // keys.set_code(KeyCodes::KeyboardWw, 2, 1);
-    // keys.set_code(KeyCodes::KeyboardEe, 3, 1);
-    // keys.set_code(KeyCodes::KeyboardRr, 4, 1);
+    keys.set_code(KeyCodes::KeyboardCommaLess, 2, 1);
+    keys.set_code(KeyCodes::KeyboardPeriodGreater, 3, 1);
+    keys.set_code(KeyCodes::KeyboardSlashQuestion, 4, 1);
     keys.set_code(KeyCodes::KeyboardVolumeUp, 5, 1);
 
-    keys.set_code(KeyCodes::KeyboardLeftShift, 7, 1);
-    keys.set_code(KeyCodes::KeyboardLeftControl, 8, 1);
-    keys.set_code(KeyCodes::KeyboardLeftAlt, 9, 1);
-    keys.set_code(KeyCodes::KeyboardLeftGUI, 10, 1);
+    keys.set_code(KeyCodes::KeyboardLeftGUI, 7, 1);
+    keys.set_code(KeyCodes::KeyboardLeftAlt, 8, 1);
+    keys.set_code(KeyCodes::KeyboardLeftControl, 9, 1);
+    keys.set_code(KeyCodes::KeyboardLeftShift, 10, 1);
     keys.set_code(KeyCodes::KeyboardVolumeDown, 11, 1);
 
     let func = |x: u64| -> u64 { ((10000 * x.pow(2)) / (x.pow(2) + 50000)) + 1000 };
@@ -920,10 +920,10 @@ pub fn load_colemak<const S: usize>(keys: &mut Keys<S>) {
     keys.set_code(KeyCodes::KeyboardBacktickTilde, 25, 2);
 
     keys.set_double(KeyCodes::Keyboard3Hash, KeyCodes::KeyboardLeftShift, 27, 2);
-    keys.set_code(KeyCodes::KeyboardRightGUI, 28, 2);
-    keys.set_code(KeyCodes::KeyboardRightAlt, 29, 2);
-    keys.set_code(KeyCodes::KeyboardRightControl, 30, 2);
-    keys.set_code(KeyCodes::KeyboardRightShift, 31, 2);
+    keys.set_code(KeyCodes::KeyboardRightShift, 28, 2);
+    keys.set_code(KeyCodes::KeyboardRightControl, 29, 2);
+    keys.set_code(KeyCodes::KeyboardRightAlt, 30, 2);
+    keys.set_code(KeyCodes::KeyboardRightGUI, 31, 2);
 
     // keys.set_code(KeyCodes::KeyboardBackslashBar, 33, 2);
     keys.set_code(KeyCodes::KeyboardBackslashBar, 34, 2);
@@ -956,10 +956,10 @@ pub fn load_colemak<const S: usize>(keys: &mut Keys<S>) {
     keys.set_code(KeyCodes::Keyboard4Dollar, 4, 3);
     keys.set_code(KeyCodes::Keyboard5Percent, 5, 3);
 
-    keys.set_code(KeyCodes::KeyboardLeftShift, 7, 3);
-    keys.set_code(KeyCodes::KeyboardLeftControl, 8, 3);
-    keys.set_code(KeyCodes::KeyboardLeftAlt, 9, 3);
-    keys.set_code(KeyCodes::KeyboardLeftGUI, 10, 3);
+    keys.set_code(KeyCodes::KeyboardLeftGUI, 7, 3);
+    keys.set_code(KeyCodes::KeyboardLeftAlt, 8, 3);
+    keys.set_code(KeyCodes::KeyboardLeftControl, 9, 3);
+    keys.set_code(KeyCodes::KeyboardLeftShift, 10, 3);
     keys.set_code(KeyCodes::KeyboardF11, 11, 3);
 
     keys.set_code(KeyCodes::KeyboardF1, 13, 3);
@@ -978,10 +978,10 @@ pub fn load_colemak<const S: usize>(keys: &mut Keys<S>) {
     keys.set_code(KeyCodes::Keyboard0CloseParens, 25, 3);
 
     keys.set_code(KeyCodes::KeyboardF12, 27, 3);
-    keys.set_code(KeyCodes::KeyboardRightGUI, 28, 3);
-    keys.set_code(KeyCodes::KeyboardRightAlt, 29, 3);
-    keys.set_code(KeyCodes::KeyboardRightControl, 30, 3);
-    keys.set_code(KeyCodes::KeyboardRightShift, 31, 3);
+    keys.set_code(KeyCodes::KeyboardRightShift, 28, 3);
+    keys.set_code(KeyCodes::KeyboardRightControl, 29, 3);
+    keys.set_code(KeyCodes::KeyboardRightAlt, 30, 3);
+    keys.set_code(KeyCodes::KeyboardRightGUI, 31, 3);
 
     keys.set_code(KeyCodes::KeyboardF6, 33, 3);
     keys.set_code(KeyCodes::KeyboardF7, 34, 3);
